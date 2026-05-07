@@ -1,13 +1,14 @@
-package com.example.maywave.screen
+package com.example.maywave.intro.screen
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,21 +20,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.annotation.DrawableRes
 import com.example.maywave.R
-import com.example.maywave.button.IntroArrowButton
-import com.example.maywave.text.description.DoctorIntroRoleDescriptionText
-import com.example.maywave.text.rolename.DoctorIntroRoleNameText
-import com.example.maywave.text.description.CitizenRoleDescriptionText
-import com.example.maywave.text.rolename.IntroRoleNameText
-import com.example.maywave.text.IntroSelectText
-import com.example.maywave.text.description.ReporterIntroRoleDescriptionText
-import com.example.maywave.text.rolename.ReporterIntroRoleNameText
+import com.example.maywave.chat.navigation.ChatRoute
+import com.example.maywave.intro.component.IntroArrowButton
+import com.example.maywave.intro.component.IntroSelectTextButton
+import com.example.maywave.intro.text.description.CitizenIntroRoleDescriptionText
+import com.example.maywave.intro.text.description.DoctorIntroRoleDescriptionText
+import com.example.maywave.intro.text.description.ReporterIntroRoleDescriptionText
+import com.example.maywave.intro.text.rolename.CitizenIntroRoleNameText
+import com.example.maywave.intro.text.rolename.DoctorIntroRoleNameText
+import com.example.maywave.intro.text.rolename.ReporterIntroRoleNameText
 import com.example.maywave.ui.theme.MayWaveTheme
 
 @Composable
-fun Intro(modifier: Modifier = Modifier) {
+fun Intro(
+    modifier: Modifier = Modifier,
+    onStartChat: (ChatRoute) -> Unit = {}
+) {
     var selectedRole by rememberSaveable { mutableStateOf(IntroRole.Citizen) }
 
     IntroRoleScreen(
@@ -43,6 +49,7 @@ fun Intro(modifier: Modifier = Modifier) {
         roleDescription = { selectedRole.RoleDescriptionText() },
         onPreviousRole = { selectedRole = selectedRole.previous() },
         onNextRole = { selectedRole = selectedRole.next() },
+        onClick = { onStartChat(selectedRole.route) },
         modifier = modifier
     )
 }
@@ -52,8 +59,8 @@ fun CitizenIntro(modifier: Modifier = Modifier) {
     IntroRoleScreen(
         roleImageRes = R.drawable.intro_citizen,
         roleImageDescription = "시민 역할",
-        roleName = { IntroRoleNameText() },
-        roleDescription = { CitizenRoleDescriptionText() },
+        roleName = { CitizenIntroRoleNameText() },
+        roleDescription = { CitizenIntroRoleDescriptionText() },
         modifier = modifier
     )
 }
@@ -89,11 +96,21 @@ private fun IntroRoleScreen(
     modifier : Modifier = Modifier,
     onPreviousRole: () -> Unit = {},
     onNextRole: () -> Unit = {},
+    onClick: () -> Unit ={}
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
     ) {
+        val widthScale = maxWidth / ReferenceScreenWidth
+        val heightScale = maxHeight / ReferenceScreenHeight
+        val scale = minOf(widthScale, heightScale)
+        val selectButtonCenterY = backgroundSourceYToScreenY(
+            sourceYRatio = SelectButtonBackgroundYRatio,
+            screenWidth = maxWidth,
+            screenHeight = maxHeight
+        )
+
         Image(
             painter = painterResource(id = R.drawable.intro_role_background),
             contentDescription = "역할 소개 배경",
@@ -107,8 +124,9 @@ private fun IntroRoleScreen(
             contentScale = ContentScale.FillWidth,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .height(580.dp)
-                .width(386.dp)
+                .offset(y = RoleImageTopOffset * scale)
+                .width(RoleImageWidth * scale)
+                .height(RoleImageHeight * scale)
         )
 
         IntroArrowButton(
@@ -117,7 +135,7 @@ private fun IntroRoleScreen(
             onClick = onPreviousRole,
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .offset(x = 21.dp, y = (-15).dp)
+                .offset(x = ArrowHorizontalOffset * scale, y = ArrowVerticalOffset * scale)
         )
 
         IntroArrowButton(
@@ -126,60 +144,102 @@ private fun IntroRoleScreen(
             onClick = onNextRole,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .offset(x = (-21).dp, y = (-15).dp)
+                .offset(x = -ArrowHorizontalOffset * scale, y = ArrowVerticalOffset * scale)
         )
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.Center)
                 .fillMaxWidth()
-                .offset(y = (-71).dp)
+                .offset(y = 165.dp)
         ) {
             roleName()
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(RoleNameDividerSpacing * scale))
 
-            RoleDivider()
+            RoleDivider(scale = scale)
 
-            Spacer(modifier = Modifier.height(21.76.dp))
+            Spacer(modifier = Modifier.height(DividerDescriptionSpacing * scale))
 
             roleDescription()
-
-            Spacer(modifier = Modifier.height(66.dp))
-
-            IntroSelectText()
         }
+
+        IntroSelectTextButton(
+            onClick = onClick,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = selectButtonCenterY - SelectButtonVisualHeight / 1.5f)
+        )
     }
 }
 
+private fun backgroundSourceYToScreenY(
+    sourceYRatio: Float,
+    screenWidth: Dp,
+    screenHeight: Dp
+): Dp {
+    val screenAspectRatio = screenWidth / screenHeight
+    val drawnBackgroundHeight = if (screenAspectRatio > BackgroundImageAspectRatio) {
+        screenWidth / BackgroundImageAspectRatio
+    } else {
+        screenHeight
+    }
+    val croppedTopHeight = (drawnBackgroundHeight - screenHeight) / 2
+
+    return drawnBackgroundHeight * sourceYRatio - croppedTopHeight
+}
+
 @Composable
-private fun RoleDivider(modifier: Modifier = Modifier) {
+private fun RoleDivider(
+    modifier: Modifier = Modifier,
+    scale: Float = 1f
+) {
     Image(
         painter = painterResource(id = R.drawable.intro_role_divider),
         contentDescription = "구분선",
         contentScale = ContentScale.Fit,
         modifier = modifier
-            .width(124.dp)
-            .height(7.dp)
+            .size(width = RoleDividerWidth * scale, height = RoleDividerHeight * scale)
     )
 }
 
+private val ReferenceScreenWidth = 393.dp
+private val ReferenceScreenHeight = 852.dp
+private val RoleImageTopOffset = 11.dp
+private val RoleImageWidth = 371.dp
+private val RoleImageHeight = 558.dp
+private val ImageRoleTextSpacing = 35.dp
+private val RoleNameDividerSpacing = 10.dp
+private val DividerDescriptionSpacing = 21.76.dp
+private val RoleDividerWidth = 124.dp
+private val RoleDividerHeight = 7.dp
+private val ArrowHorizontalOffset = 21.dp
+private val ArrowVerticalOffset = (-15).dp
+private const val BackgroundImageAspectRatio = 853f / 1844f
+private const val SelectButtonBackgroundYRatio = 0.9f
+private val SelectButtonVisualHeight = 25.dp
+
+
 private enum class IntroRole(
     @param:DrawableRes val imageRes: Int,
-    val imageDescription: String
+    val imageDescription: String,
+    val route: ChatRoute
 ) {
     Citizen(
         imageRes = R.drawable.intro_citizen,
-        imageDescription = "시민 역할"
+        imageDescription = "시민 역할",
+        route = ChatRoute.Citizen
     ),
     Doctor(
         imageRes = R.drawable.intro_doctor,
-        imageDescription = "의사 역할"
+        imageDescription = "의사 역할",
+        route = ChatRoute.Doctor
     ),
     Reporter(
         imageRes = R.drawable.intro_reporter,
-        imageDescription = "기자 역할"
+        imageDescription = "기자 역할",
+        route = ChatRoute.Reporter
     );
 
     fun previous(): IntroRole = when (this) {
@@ -198,7 +258,7 @@ private enum class IntroRole(
 @Composable
 private fun IntroRole.RoleNameText() {
     when (this) {
-        IntroRole.Citizen -> IntroRoleNameText()
+        IntroRole.Citizen -> CitizenIntroRoleNameText()
         IntroRole.Doctor -> DoctorIntroRoleNameText()
         IntroRole.Reporter -> ReporterIntroRoleNameText()
     }
@@ -207,7 +267,7 @@ private fun IntroRole.RoleNameText() {
 @Composable
 private fun IntroRole.RoleDescriptionText() {
     when (this) {
-        IntroRole.Citizen -> CitizenRoleDescriptionText()
+        IntroRole.Citizen -> CitizenIntroRoleDescriptionText()
         IntroRole.Doctor -> DoctorIntroRoleDescriptionText()
         IntroRole.Reporter -> ReporterIntroRoleDescriptionText()
     }
@@ -221,9 +281,9 @@ private fun IntroPreview() {
     }
 }
 
-@Preview(showBackground = true, widthDp = 393, heightDp = 852)
+@Preview(showBackground = true, widthDp = 393, heightDp = 852,showSystemUi = true)
 @Composable
-private fun CitizenPreview() {
+private fun CitizenIntroPreview() {
     MayWaveTheme {
         CitizenIntro()
     }

@@ -1,4 +1,4 @@
-package com.example.maywave.button
+package com.example.maywave.intro.component
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
