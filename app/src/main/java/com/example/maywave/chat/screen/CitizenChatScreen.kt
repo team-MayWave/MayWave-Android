@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,7 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.maywave.R
 import com.example.maywave.chat.component.choice.ChatChoiceElement
 import com.example.maywave.chat.component.header.ChatTopTitle
@@ -46,6 +47,10 @@ import com.example.maywave.chat.component.navigation.ChatBackButton
 import com.example.maywave.chat.component.overlay.ChatFinalFadeOverlay
 import com.example.maywave.chat.component.overlay.ChatFinalStep
 import com.example.maywave.chat.component.record.ChatRecord
+import com.example.maywave.chat.viewmodel.ChatGameRequest
+import com.example.maywave.chat.viewmodel.ChatGameUiState
+import com.example.maywave.chat.viewmodel.ChatGameViewModel
+import com.example.maywave.chat.viewmodel.ChatGameViewModelFactory
 import com.example.maywave.ui.theme.MayWaveTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -59,6 +64,10 @@ private const val DISTANCE_BRANCH_ELEMENT_COUNT = 10
 private val CHAT_ELEMENT_SPACING = 35.dp
 private val BRANCH_CHAT_ELEMENT_SPACING = 35.dp
 private val AUTO_SCROLL_BOTTOM_PADDING = 16.dp
+private val CitizenCloseRequest = ChatGameRequest(roleId = 2, scenarioId = 1, choice = 1)
+private val CitizenDistanceRequest = ChatGameRequest(roleId = 2, scenarioId = 1, choice = 2)
+private val CitizenHelpFallenRequest = ChatGameRequest(roleId = 2, scenarioId = 2, choice = 1)
+private val CitizenAvoidSituationRequest = ChatGameRequest(roleId = 2, scenarioId = 2, choice = 2)
 
 @Composable
 fun CitizenChatScreen(
@@ -66,34 +75,62 @@ fun CitizenChatScreen(
     onBackClick: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
+    val chatGameViewModel: ChatGameViewModel = viewModel(
+        factory = remember { ChatGameViewModelFactory() }
+    )
+    val chatGameUiState by chatGameViewModel.uiState.collectAsState()
     var selectedBranch by rememberSaveable { mutableStateOf<CitizenChatBranch?>(null) }
     var selectedCloseBranch by rememberSaveable { mutableStateOf<CitizenCloseBranch?>(null) }
     var branchRevealKey by rememberSaveable { mutableIntStateOf(0) }
     var closeBranchRevealKey by rememberSaveable { mutableIntStateOf(0) }
     val shouldFollowNewContent = rememberShouldFollowNewContent(listState = listState)
+    val closeItemCount = if (chatGameUiState.hasErrorFor(CitizenCloseRequest)) {
+        1
+    } else {
+        CLOSE_BRANCH_ELEMENT_COUNT
+    }
+    val distanceItemCount = if (chatGameUiState.hasErrorFor(CitizenDistanceRequest)) {
+        1
+    } else {
+        DISTANCE_BRANCH_ELEMENT_COUNT
+    }
+    val helpFallenItemCount = if (chatGameUiState.hasErrorFor(CitizenHelpFallenRequest)) {
+        1
+    } else {
+        HELP_FALLEN_ELEMENT_COUNT
+    }
+    val avoidSituationItemCount = if (chatGameUiState.hasErrorFor(CitizenAvoidSituationRequest)) {
+        1
+    } else {
+        AVOID_SITUATION_ELEMENT_COUNT
+    }
     val revealedInitialItemCount = rememberSequentialRevealCount(
         itemCount = INITIAL_CHAT_ELEMENT_COUNT,
         initiallyVisibleItemCount = 1
     )
     val revealedCloseItemCount = rememberSequentialRevealCount(
-        itemCount = CLOSE_BRANCH_ELEMENT_COUNT,
+        itemCount = closeItemCount,
         revealKey = branchRevealKey,
-        enabled = selectedBranch == CitizenChatBranch.Close
+        enabled = selectedBranch == CitizenChatBranch.Close &&
+            chatGameUiState.isResultReadyFor(CitizenCloseRequest)
     )
     val revealedDistanceItemCount = rememberSequentialRevealCount(
-        itemCount = DISTANCE_BRANCH_ELEMENT_COUNT,
+        itemCount = distanceItemCount,
         revealKey = branchRevealKey,
-        enabled = selectedBranch == CitizenChatBranch.Distance
+        enabled = selectedBranch == CitizenChatBranch.Distance &&
+            chatGameUiState.isResultReadyFor(CitizenDistanceRequest)
     )
     val revealedHelpFallenItemCount = rememberSequentialRevealCount(
-        itemCount = HELP_FALLEN_ELEMENT_COUNT,
+        itemCount = helpFallenItemCount,
         revealKey = closeBranchRevealKey,
-        enabled = selectedCloseBranch == CitizenCloseBranch.HelpFallen
+        enabled = selectedCloseBranch == CitizenCloseBranch.HelpFallen &&
+            chatGameUiState.isResultReadyFor(CitizenHelpFallenRequest)
     )
     val revealedAvoidSituationItemCount = rememberSequentialRevealCount(
-        itemCount = AVOID_SITUATION_ELEMENT_COUNT,
+        itemCount = avoidSituationItemCount,
         revealKey = closeBranchRevealKey,
-        enabled = selectedCloseBranch == CitizenCloseBranch.AvoidSituation
+        enabled = selectedCloseBranch == CitizenCloseBranch.AvoidSituation &&
+            chatGameUiState.isResultReadyFor(CitizenAvoidSituationRequest)
     )
     val finalSequenceKey = when {
         selectedCloseBranch == CitizenCloseBranch.HelpFallen &&
@@ -226,12 +263,14 @@ fun CitizenChatScreen(
                                 selectedCloseBranch = null
                                 branchRevealKey += 1
                                 closeBranchRevealKey = 0
+                                chatGameViewModel.submitChoice(CitizenCloseRequest)
                             },
                             onSecondChoiceClick = {
                                 selectedBranch = CitizenChatBranch.Distance
                                 selectedCloseBranch = null
                                 branchRevealKey += 1
                                 closeBranchRevealKey = 0
+                                chatGameViewModel.submitChoice(CitizenDistanceRequest)
                             },
                             selectedChoiceIndex = when (selectedBranch) {
                                 CitizenChatBranch.Close -> 0
@@ -247,23 +286,31 @@ fun CitizenChatScreen(
                         item {
                             CloseBranchContent(
                                 selectedCloseBranch = selectedCloseBranch,
+                                chatGameUiState = chatGameUiState,
                                 revealedItemCount = revealedCloseItemCount,
                                 revealedHelpFallenItemCount = revealedHelpFallenItemCount,
                                 revealedAvoidSituationItemCount = revealedAvoidSituationItemCount,
                                 onHelpFallenClick = {
                                     selectedCloseBranch = CitizenCloseBranch.HelpFallen
                                     closeBranchRevealKey += 1
+                                    chatGameViewModel.submitChoice(CitizenHelpFallenRequest)
                                 },
                                 onAvoidSituationClick = {
                                     selectedCloseBranch = CitizenCloseBranch.AvoidSituation
                                     closeBranchRevealKey += 1
+                                    chatGameViewModel.submitChoice(CitizenAvoidSituationRequest)
                                 }
                             )
                         }
                     }
 
                     CitizenChatBranch.Distance -> {
-                        item { DistanceBranchContent(revealedItemCount = revealedDistanceItemCount) }
+                        item {
+                            DistanceBranchContent(
+                                resultText = chatGameUiState.resultTextFor(CitizenDistanceRequest),
+                                revealedItemCount = revealedDistanceItemCount
+                            )
+                        }
                     }
 
                     null -> Unit
@@ -276,9 +323,8 @@ fun CitizenChatScreen(
                 sequenceKey = finalSequenceKey,
                 steps = listOf(
                     ChatFinalStep(
-                        text = "그날의 시간은 끝났지만, 그날의 이야기는 아직 끝나지 않았습니다. 우리는, 그날을 기억합니다.",
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp
+                        text = "그날의 시간은 끝났지만,\n그날의 이야기는\n아직 끝나지 않았습니다.\n우리는,\n그날을 기억합니다.",
+                        showDate = true
                     )
                 ),
                 onBackClick = onBackClick
@@ -438,6 +484,7 @@ private fun AnimatedChatItem(
 @Composable
 private fun CloseBranchContent(
     selectedCloseBranch: CitizenCloseBranch?,
+    chatGameUiState: ChatGameUiState,
     revealedItemCount: Int,
     revealedHelpFallenItemCount: Int,
     revealedAvoidSituationItemCount: Int,
@@ -450,10 +497,7 @@ private fun CloseBranchContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedChatItem(visible = revealedItemCount >= 1) {
-            OtherChatElement(
-                nameText = "친구",
-                chatText = "아... 분위기 이상한데"
-            )
+            ChatNarrationText(text = chatGameUiState.resultTextFor(CitizenCloseRequest))
         }
 
         AnimatedChatItem(visible = revealedItemCount >= 2) {
@@ -513,11 +557,17 @@ private fun CloseBranchContent(
 
         when (selectedCloseBranch) {
             CitizenCloseBranch.HelpFallen -> {
-                HelpFallenContent(revealedItemCount = revealedHelpFallenItemCount)
+                HelpFallenContent(
+                    resultText = chatGameUiState.resultTextFor(CitizenHelpFallenRequest),
+                    revealedItemCount = revealedHelpFallenItemCount
+                )
             }
 
             CitizenCloseBranch.AvoidSituation -> {
-                AvoidSituationContent(revealedItemCount = revealedAvoidSituationItemCount)
+                AvoidSituationContent(
+                    resultText = chatGameUiState.resultTextFor(CitizenAvoidSituationRequest),
+                    revealedItemCount = revealedAvoidSituationItemCount
+                )
             }
 
             null -> Unit
@@ -527,6 +577,7 @@ private fun CloseBranchContent(
 
 @Composable
 private fun HelpFallenContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -535,6 +586,10 @@ private fun HelpFallenContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedChatItem(visible = revealedItemCount >= 1) {
+            ChatNarrationText(text = resultText)
+        }
+
+        AnimatedChatItem(visible = revealedItemCount >= 2) {
             ChatSceneImage(
                 imageResId = R.drawable.citizen_chat_branch_one_second,
                 contentDescription = "군인과 차량이 이동하는 거리",
@@ -542,24 +597,24 @@ private fun HelpFallenContent(
             )
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 2) {
+        AnimatedChatItem(visible = revealedItemCount >= 3) {
             ChatNarrationText(text = "혼란 속에서 사람들의 움직임이 계속됩니다.")
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 3) {
+        AnimatedChatItem(visible = revealedItemCount >= 4) {
             OtherChatElement(
                 nameText = "주변 시민",
                 chatText = "여기 좀 더 비켜줘!"
             )
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 4) {
+        AnimatedChatItem(visible = revealedItemCount >= 5) {
             ChatNarrationText(
                 text = "당신은 그 자리에 서 있습니다. 아직 상황을 완전히 이해하지 못한 채, 그저 바라보고 있습니다. 그날의 일은, 단순한 충돌로 끝나지 않았습니다."
             )
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 5) {
+        AnimatedChatItem(visible = revealedItemCount >= 6) {
             ChatSceneImage(
                 imageResId = R.drawable.citizen_chat_branch_one_third,
                 contentDescription = "쓰러진 시민을 부축하는 사람들",
@@ -568,13 +623,13 @@ private fun HelpFallenContent(
             )
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 6) {
+        AnimatedChatItem(visible = revealedItemCount >= 7) {
             ChatRecord(
                 bodyText = "더 많은 시민들이 거리로 나오기 시작했습니다. 전남의 사건은 광주 전역으로 퍼져나갔습니다."
             )
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 7) {
+        AnimatedChatItem(visible = revealedItemCount >= 8) {
             ChatNarrationText(text = "당신은 그 시작을 목격했습니다.")
         }
 
@@ -583,6 +638,7 @@ private fun HelpFallenContent(
 
 @Composable
 private fun AvoidSituationContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -591,9 +647,7 @@ private fun AvoidSituationContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedChatItem(visible = revealedItemCount >= 1) {
-            ChatNarrationText(
-                text = "당신은 선뜻 움직이지 못했습니다. 눈앞의 상황은 낯설고, 어디까지 다가가야 할지 알 수 없었습니다. 그날, 많은 사람들이 같은 자리에서 상황을 바라보고 있었습니다."
-            )
+            ChatNarrationText(text = resultText)
         }
 
         AnimatedChatItem(visible = revealedItemCount >= 2) {
@@ -650,6 +704,7 @@ private fun AvoidSituationContent(
 
 @Composable
 private fun DistanceBranchContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -658,9 +713,7 @@ private fun DistanceBranchContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedChatItem(visible = revealedItemCount >= 1) {
-            ChatNarrationText(
-                text = "당신은 선뜻 움직이지 못했습니다. 눈앞의 상황은 낯설고, 어디까지 다가가야 할지 알 수 없었습니다. 그날, 많은 시민들이 같은 자리에서 상황을 지켜보고 있었습니다."
-            )
+            ChatNarrationText(text = resultText)
         }
 
         AnimatedChatItem(visible = revealedItemCount >= 2) {

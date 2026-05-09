@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,7 +58,6 @@ fun ElementTitle(
                 fontSize = 15.sp,
                 fontStyle = FontStyle.Normal,
                 fontWeight = FontWeight(400),
-                fontFamily = FontFamily.Serif,
                 textAlign = TextAlign.Center,
             )
 
@@ -83,7 +81,6 @@ fun ElementTitle(
             fontSize = 12.sp,
             fontStyle = FontStyle.Normal,
             fontWeight = FontWeight(400),
-            fontFamily = FontFamily.Serif,
             lineHeight = 9.sp,
             letterSpacing = 0.sp,
             textAlign = TextAlign.Center

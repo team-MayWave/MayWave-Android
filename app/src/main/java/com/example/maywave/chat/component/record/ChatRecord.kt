@@ -9,7 +9,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -32,7 +31,6 @@ fun ChatRecord(
             text = "[기록]",
             color = ChatDescriptionTextColor,
             fontSize = 11.sp,
-            fontFamily = FontFamily.Serif,
             fontWeight = FontWeight(400),
             lineHeight = 18.sp,
             textAlign = TextAlign.Center
@@ -42,7 +40,6 @@ fun ChatRecord(
             text = "──────────────",
             color = ChatDescriptionTextColor,
             fontSize = 11.sp,
-            fontFamily = FontFamily.Serif,
             fontWeight = FontWeight(400),
             lineHeight = 18.sp,
             textAlign = TextAlign.Center
@@ -52,7 +49,6 @@ fun ChatRecord(
             text = dateText,
             color = ChatDescriptionTextColor,
             fontSize = 11.sp,
-            fontFamily = FontFamily.Serif,
             fontWeight = FontWeight(400),
             lineHeight = 18.sp,
             textAlign = TextAlign.Center
@@ -62,7 +58,6 @@ fun ChatRecord(
             text = "──────────────",
             color = ChatDescriptionTextColor,
             fontSize = 11.sp,
-            fontFamily = FontFamily.Serif,
             fontWeight = FontWeight(400),
             lineHeight = 18.sp,
             textAlign = TextAlign.Center
@@ -74,7 +69,6 @@ fun ChatRecord(
             text = bodyText,
             color = ChatDescriptionTextColor,
             fontSize = 12.sp,
-            fontFamily = FontFamily.Serif,
             fontWeight = FontWeight(400),
             lineHeight = 22.sp,
             textAlign = TextAlign.Center

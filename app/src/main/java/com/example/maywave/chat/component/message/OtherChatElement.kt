@@ -23,7 +23,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,13 +74,11 @@ fun OtherChatElement(
                 fontSize = 10.sp,
                 fontStyle = FontStyle.Normal,
                 fontWeight = FontWeight(400),
-                fontFamily = FontFamily.Serif,
                 lineHeight = 10.sp,
                 letterSpacing = 0.sp,
                 textAlign = nameTextAlign,
                 modifier = Modifier
                     .padding(start = 20.dp, end = 14.dp)
-                    .height(12.dp)
             )
 
             Box(
@@ -105,7 +102,6 @@ fun OtherChatElement(
                     fontSize = 10.sp,
                     fontStyle = FontStyle.Normal,
                     fontWeight = FontWeight(600),
-                    fontFamily = FontFamily.Serif,
                     lineHeight = 13.sp,
                     letterSpacing = 0.sp,
                     modifier = Modifier

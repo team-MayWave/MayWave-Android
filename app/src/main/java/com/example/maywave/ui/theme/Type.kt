@@ -1,34 +1,69 @@
 package com.example.maywave.ui.theme
 
 import androidx.compose.material3.Typography
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
-val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
+private val DefaultTypography = Typography()
+
+val MayWaveTypography = Typography(
+    displayLarge = DefaultTypography.displayLarge.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
     ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
+    displayMedium = DefaultTypography.displayMedium.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    displaySmall = DefaultTypography.displaySmall.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    headlineLarge = DefaultTypography.headlineLarge.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    headlineMedium = DefaultTypography.headlineMedium.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    headlineSmall = DefaultTypography.headlineSmall.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    titleLarge = DefaultTypography.titleLarge.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    titleMedium = DefaultTypography.titleMedium.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    titleSmall = DefaultTypography.titleSmall.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    bodyLarge = DefaultTypography.bodyLarge.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(400)
+    ),
+    bodyMedium = DefaultTypography.bodyMedium.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(400)
+    ),
+    bodySmall = DefaultTypography.bodySmall.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(400)
+    ),
+    labelLarge = DefaultTypography.labelLarge.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(600)
+    ),
+    labelMedium = DefaultTypography.labelMedium.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(400)
+    ),
+    labelSmall = DefaultTypography.labelSmall.copy(
+        fontFamily = NanumMyeongjo,
+        fontWeight = FontWeight(400)
     )
-    */
 )

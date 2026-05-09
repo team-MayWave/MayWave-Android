@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -116,7 +115,6 @@ private fun ChatChoiceTitle(modifier: Modifier = Modifier) {
             color = ChatChoiceTitleColor,
             fontSize = 10.sp,
             fontWeight = FontWeight(400),
-            fontFamily = FontFamily.Serif,
             textAlign = TextAlign.Center,
             modifier = Modifier.width(148.dp)
         )
@@ -178,8 +176,7 @@ private fun ChoiceButton(
             color = buttonTextColor,
             fontSize = 11.sp,
             lineHeight = 13.sp,
-            fontWeight = if (isDimmed) FontWeight(600) else FontWeight.Normal,
-            fontFamily = FontFamily.Serif,
+            fontWeight = if (isDimmed) FontWeight(600) else FontWeight(400),
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 10.dp)
         )

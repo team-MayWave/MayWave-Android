@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.maywave.R
 import com.example.maywave.chat.component.choice.ChatChoiceElement
 import com.example.maywave.chat.component.header.ChatTopTitle
@@ -43,6 +45,9 @@ import com.example.maywave.chat.component.navigation.ChatBackButton
 import com.example.maywave.chat.component.overlay.ChatFinalFadeOverlay
 import com.example.maywave.chat.component.overlay.ChatFinalStep
 import com.example.maywave.chat.component.record.ChatRecord
+import com.example.maywave.chat.viewmodel.ChatGameRequest
+import com.example.maywave.chat.viewmodel.ChatGameViewModel
+import com.example.maywave.chat.viewmodel.ChatGameViewModelFactory
 import com.example.maywave.ui.theme.MayWaveTheme
 import kotlin.math.abs
 import kotlinx.coroutines.delay
@@ -57,6 +62,8 @@ private const val REPORTER_BRANCH_LAZY_ITEM_INDEX = 1
 private val REPORTER_CHAT_ELEMENT_SPACING = 35.dp
 private val REPORTER_BRANCH_CHAT_ELEMENT_SPACING = 35.dp
 private val REPORTER_AUTO_SCROLL_BOTTOM_PADDING = 16.dp
+private val ReporterContinueRecordRequest = ChatGameRequest(roleId = 3, scenarioId = 5, choice = 1)
+private val ReporterEscapeRequest = ChatGameRequest(roleId = 3, scenarioId = 5, choice = 2)
 
 @Composable
 fun ReporterChatScreen(
@@ -64,22 +71,38 @@ fun ReporterChatScreen(
     onBackClick: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
+    val chatGameViewModel: ChatGameViewModel = viewModel(
+        factory = remember { ChatGameViewModelFactory() }
+    )
+    val chatGameUiState by chatGameViewModel.uiState.collectAsState()
     var selectedBranch by rememberSaveable { mutableStateOf<ReporterChatBranch?>(null) }
     var branchRevealKey by rememberSaveable { mutableIntStateOf(0) }
     val shouldFollowNewContent = rememberReporterShouldFollowNewContent(listState = listState)
+    val continueRecordItemCount = if (chatGameUiState.hasErrorFor(ReporterContinueRecordRequest)) {
+        1
+    } else {
+        REPORTER_CONTINUE_RECORD_ELEMENT_COUNT
+    }
+    val escapeItemCount = if (chatGameUiState.hasErrorFor(ReporterEscapeRequest)) {
+        1
+    } else {
+        REPORTER_ESCAPE_ELEMENT_COUNT
+    }
     val revealedInitialItemCount = rememberReporterSequentialRevealCount(
         itemCount = REPORTER_INITIAL_ELEMENT_COUNT,
         initiallyVisibleItemCount = 1
     )
     val revealedContinueRecordItemCount = rememberReporterSequentialRevealCount(
-        itemCount = REPORTER_CONTINUE_RECORD_ELEMENT_COUNT,
+        itemCount = continueRecordItemCount,
         revealKey = branchRevealKey,
-        enabled = selectedBranch == ReporterChatBranch.ContinueRecord
+        enabled = selectedBranch == ReporterChatBranch.ContinueRecord &&
+            chatGameUiState.isResultReadyFor(ReporterContinueRecordRequest)
     )
     val revealedEscapeItemCount = rememberReporterSequentialRevealCount(
-        itemCount = REPORTER_ESCAPE_ELEMENT_COUNT,
+        itemCount = escapeItemCount,
         revealKey = branchRevealKey,
-        enabled = selectedBranch == ReporterChatBranch.Escape
+        enabled = selectedBranch == ReporterChatBranch.Escape &&
+            chatGameUiState.isResultReadyFor(ReporterEscapeRequest)
     )
     val finalSequenceKey = when {
         selectedBranch == ReporterChatBranch.ContinueRecord &&
@@ -141,10 +164,12 @@ fun ReporterChatScreen(
                         onContinueRecordClick = {
                             selectedBranch = ReporterChatBranch.ContinueRecord
                             branchRevealKey += 1
+                            chatGameViewModel.submitChoice(ReporterContinueRecordRequest)
                         },
                         onEscapeClick = {
                             selectedBranch = ReporterChatBranch.Escape
                             branchRevealKey += 1
+                            chatGameViewModel.submitChoice(ReporterEscapeRequest)
                         }
                     )
                 }
@@ -153,6 +178,7 @@ fun ReporterChatScreen(
                     ReporterChatBranch.ContinueRecord -> {
                         item {
                             ContinueRecordContent(
+                                resultText = chatGameUiState.resultTextFor(ReporterContinueRecordRequest),
                                 revealedItemCount = revealedContinueRecordItemCount
                             )
                         }
@@ -160,7 +186,10 @@ fun ReporterChatScreen(
 
                     ReporterChatBranch.Escape -> {
                         item {
-                            EscapeContent(revealedItemCount = revealedEscapeItemCount)
+                            EscapeContent(
+                                resultText = chatGameUiState.resultTextFor(ReporterEscapeRequest),
+                                revealedItemCount = revealedEscapeItemCount
+                            )
                         }
                     }
 
@@ -284,6 +313,7 @@ private fun InitialReporterContent(
 
 @Composable
 private fun ContinueRecordContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -292,7 +322,7 @@ private fun ContinueRecordContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedReporterChatItem(visible = revealedItemCount >= 1) {
-            MyChatElement(chatText = "지금 멈출 수 없어")
+            ChatNarrationText(text = resultText)
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 2) {
@@ -350,6 +380,7 @@ private fun ContinueRecordContent(
 
 @Composable
 private fun EscapeContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -358,9 +389,7 @@ private fun EscapeContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedReporterChatItem(visible = revealedItemCount >= 1) {
-            ChatNarrationText(
-                text = "당신은 안전을 선택했습니다.\n하지만 그날의 모든 장면이\n기록으로 남을 수는 없었습니다."
-            )
+            ChatNarrationText(text = resultText)
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 2) {

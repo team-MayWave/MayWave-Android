@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.maywave.R
 import com.example.maywave.chat.component.choice.ChatChoiceElement
 import com.example.maywave.chat.component.header.ChatTopTitle
@@ -44,6 +46,10 @@ import com.example.maywave.chat.component.navigation.ChatBackButton
 import com.example.maywave.chat.component.overlay.ChatFinalFadeOverlay
 import com.example.maywave.chat.component.overlay.ChatFinalStep
 import com.example.maywave.chat.component.record.ChatRecord
+import com.example.maywave.chat.viewmodel.ChatGameRequest
+import com.example.maywave.chat.viewmodel.ChatGameUiState
+import com.example.maywave.chat.viewmodel.ChatGameViewModel
+import com.example.maywave.chat.viewmodel.ChatGameViewModelFactory
 import com.example.maywave.ui.theme.MayWaveTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -58,6 +64,11 @@ private const val DOCTOR_REQUEST_TRANSFER_ELEMENT_COUNT = 21
 private val DOCTOR_CHAT_ELEMENT_SPACING = 35.dp
 private val DOCTOR_BRANCH_CHAT_ELEMENT_SPACING = 35.dp
 private val DOCTOR_AUTO_SCROLL_BOTTOM_PADDING = 16.dp
+private val DoctorRunToPatientRequest = ChatGameRequest(roleId = 1, scenarioId = 3, choice = 1)
+private val DoctorPrepareHospitalRequest = ChatGameRequest(roleId = 1, scenarioId = 3, choice = 2)
+private val DoctorFocusPatientRequest = ChatGameRequest(roleId = 1, scenarioId = 4, choice = 1)
+private val DoctorCheckPatientsRequest = ChatGameRequest(roleId = 1, scenarioId = 4, choice = 2)
+private val DoctorRequestTransferRequest = ChatGameRequest(roleId = 1, scenarioId = 4, choice = 3)
 
 @Composable
 fun DoctorChatScreen(
@@ -65,39 +76,73 @@ fun DoctorChatScreen(
     onBackClick: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
+    val chatGameViewModel: ChatGameViewModel = viewModel(
+        factory = remember { ChatGameViewModelFactory() }
+    )
+    val chatGameUiState by chatGameViewModel.uiState.collectAsState()
     var selectedOpeningBranch by rememberSaveable { mutableStateOf<DoctorOpeningBranch?>(null) }
     var selectedTriageBranch by rememberSaveable { mutableStateOf<DoctorTriageBranch?>(null) }
     var openingRevealKey by rememberSaveable { mutableIntStateOf(0) }
     var triageRevealKey by rememberSaveable { mutableIntStateOf(0) }
     val shouldFollowNewContent = rememberDoctorShouldFollowNewContent(listState = listState)
+    val runToPatientItemCount = if (chatGameUiState.hasErrorFor(DoctorRunToPatientRequest)) {
+        1
+    } else {
+        DOCTOR_RUN_TO_PATIENT_ELEMENT_COUNT
+    }
+    val prepareHospitalItemCount = if (chatGameUiState.hasErrorFor(DoctorPrepareHospitalRequest)) {
+        1
+    } else {
+        DOCTOR_PREPARE_HOSPITAL_ELEMENT_COUNT
+    }
+    val focusPatientItemCount = if (chatGameUiState.hasErrorFor(DoctorFocusPatientRequest)) {
+        1
+    } else {
+        DOCTOR_FOCUS_PATIENT_ELEMENT_COUNT
+    }
+    val checkPatientsItemCount = if (chatGameUiState.hasErrorFor(DoctorCheckPatientsRequest)) {
+        1
+    } else {
+        DOCTOR_CHECK_PATIENTS_ELEMENT_COUNT
+    }
+    val requestTransferItemCount = if (chatGameUiState.hasErrorFor(DoctorRequestTransferRequest)) {
+        1
+    } else {
+        DOCTOR_REQUEST_TRANSFER_ELEMENT_COUNT
+    }
     val revealedInitialItemCount = rememberDoctorSequentialRevealCount(
         itemCount = DOCTOR_INITIAL_ELEMENT_COUNT,
         initiallyVisibleItemCount = 1
     )
     val revealedRunToPatientItemCount = rememberDoctorSequentialRevealCount(
-        itemCount = DOCTOR_RUN_TO_PATIENT_ELEMENT_COUNT,
+        itemCount = runToPatientItemCount,
         revealKey = openingRevealKey,
-        enabled = selectedOpeningBranch == DoctorOpeningBranch.RunToPatient
+        enabled = selectedOpeningBranch == DoctorOpeningBranch.RunToPatient &&
+            chatGameUiState.isResultReadyFor(DoctorRunToPatientRequest)
     )
     val revealedPrepareHospitalItemCount = rememberDoctorSequentialRevealCount(
-        itemCount = DOCTOR_PREPARE_HOSPITAL_ELEMENT_COUNT,
+        itemCount = prepareHospitalItemCount,
         revealKey = openingRevealKey,
-        enabled = selectedOpeningBranch == DoctorOpeningBranch.PrepareHospital
+        enabled = selectedOpeningBranch == DoctorOpeningBranch.PrepareHospital &&
+            chatGameUiState.isResultReadyFor(DoctorPrepareHospitalRequest)
     )
     val revealedFocusPatientItemCount = rememberDoctorSequentialRevealCount(
-        itemCount = DOCTOR_FOCUS_PATIENT_ELEMENT_COUNT,
+        itemCount = focusPatientItemCount,
         revealKey = triageRevealKey,
-        enabled = selectedTriageBranch == DoctorTriageBranch.FocusPatient
+        enabled = selectedTriageBranch == DoctorTriageBranch.FocusPatient &&
+            chatGameUiState.isResultReadyFor(DoctorFocusPatientRequest)
     )
     val revealedCheckPatientsItemCount = rememberDoctorSequentialRevealCount(
-        itemCount = DOCTOR_CHECK_PATIENTS_ELEMENT_COUNT,
+        itemCount = checkPatientsItemCount,
         revealKey = triageRevealKey,
-        enabled = selectedTriageBranch == DoctorTriageBranch.CheckPatients
+        enabled = selectedTriageBranch == DoctorTriageBranch.CheckPatients &&
+            chatGameUiState.isResultReadyFor(DoctorCheckPatientsRequest)
     )
     val revealedRequestTransferItemCount = rememberDoctorSequentialRevealCount(
-        itemCount = DOCTOR_REQUEST_TRANSFER_ELEMENT_COUNT,
+        itemCount = requestTransferItemCount,
         revealKey = triageRevealKey,
-        enabled = selectedTriageBranch == DoctorTriageBranch.RequestTransfer
+        enabled = selectedTriageBranch == DoctorTriageBranch.RequestTransfer &&
+            chatGameUiState.isResultReadyFor(DoctorRequestTransferRequest)
     )
     val finalSequenceKey = when {
         selectedTriageBranch == DoctorTriageBranch.FocusPatient &&
@@ -241,12 +286,14 @@ fun DoctorChatScreen(
                                 selectedTriageBranch = null
                                 openingRevealKey += 1
                                 triageRevealKey = 0
+                                chatGameViewModel.submitChoice(DoctorRunToPatientRequest)
                             },
                             onSecondChoiceClick = {
                                 selectedOpeningBranch = DoctorOpeningBranch.PrepareHospital
                                 selectedTriageBranch = null
                                 openingRevealKey += 1
                                 triageRevealKey = 0
+                                chatGameViewModel.submitChoice(DoctorPrepareHospitalRequest)
                             },
                             selectedChoiceIndex = when (selectedOpeningBranch) {
                                 DoctorOpeningBranch.RunToPatient -> 0
@@ -262,6 +309,7 @@ fun DoctorChatScreen(
                         item {
                             RunToPatientContent(
                                 selectedTriageBranch = selectedTriageBranch,
+                                chatGameUiState = chatGameUiState,
                                 revealedItemCount = revealedRunToPatientItemCount,
                                 revealedFocusPatientItemCount = revealedFocusPatientItemCount,
                                 revealedCheckPatientsItemCount = revealedCheckPatientsItemCount,
@@ -269,14 +317,17 @@ fun DoctorChatScreen(
                                 onFocusPatientClick = {
                                     selectedTriageBranch = DoctorTriageBranch.FocusPatient
                                     triageRevealKey += 1
+                                    chatGameViewModel.submitChoice(DoctorFocusPatientRequest)
                                 },
                                 onCheckPatientsClick = {
                                     selectedTriageBranch = DoctorTriageBranch.CheckPatients
                                     triageRevealKey += 1
+                                    chatGameViewModel.submitChoice(DoctorCheckPatientsRequest)
                                 },
                                 onRequestTransferClick = {
                                     selectedTriageBranch = DoctorTriageBranch.RequestTransfer
                                     triageRevealKey += 1
+                                    chatGameViewModel.submitChoice(DoctorRequestTransferRequest)
                                 }
                             )
                         }
@@ -284,7 +335,10 @@ fun DoctorChatScreen(
 
                     DoctorOpeningBranch.PrepareHospital -> {
                         item {
-                            PrepareHospitalContent(revealedItemCount = revealedPrepareHospitalItemCount)
+                            PrepareHospitalContent(
+                                resultText = chatGameUiState.resultTextFor(DoctorPrepareHospitalRequest),
+                                revealedItemCount = revealedPrepareHospitalItemCount
+                            )
                         }
                     }
 
@@ -304,7 +358,7 @@ fun DoctorChatScreen(
                         text = "당신은 그날의 의료진이었습니다."
                     ),
                     ChatFinalStep(
-                        text = "그날의 시간은 끝났지만, 그날의 이야기는 아직 끝나지 않았습니다. 우리는, 그날을 기억합니다.",
+                        text = "그날의 시간은 끝났지만,\n그날의 이야기는\n아직 끝나지 않았습니다.\n우리는,\n그날을 기억합니다.",
                         showDate = true
                     )
                 ),
@@ -343,6 +397,7 @@ private fun DoctorChatHeader(
 @Composable
 private fun RunToPatientContent(
     selectedTriageBranch: DoctorTriageBranch?,
+    chatGameUiState: ChatGameUiState,
     revealedItemCount: Int,
     revealedFocusPatientItemCount: Int,
     revealedCheckPatientsItemCount: Int,
@@ -357,7 +412,7 @@ private fun RunToPatientContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedDoctorChatItem(visible = revealedItemCount >= 1) {
-            ChatNarrationText(text = "당신은 망설일 틈 없이 움직였습니다.")
+            ChatNarrationText(text = chatGameUiState.resultTextFor(DoctorRunToPatientRequest))
         }
 
         AnimatedDoctorChatItem(visible = revealedItemCount >= 2) {
@@ -453,15 +508,24 @@ private fun RunToPatientContent(
 
         when (selectedTriageBranch) {
             DoctorTriageBranch.FocusPatient -> {
-                FocusPatientContent(revealedItemCount = revealedFocusPatientItemCount)
+                FocusPatientContent(
+                    resultText = chatGameUiState.resultTextFor(DoctorFocusPatientRequest),
+                    revealedItemCount = revealedFocusPatientItemCount
+                )
             }
 
             DoctorTriageBranch.CheckPatients -> {
-                CheckPatientsContent(revealedItemCount = revealedCheckPatientsItemCount)
+                CheckPatientsContent(
+                    resultText = chatGameUiState.resultTextFor(DoctorCheckPatientsRequest),
+                    revealedItemCount = revealedCheckPatientsItemCount
+                )
             }
 
             DoctorTriageBranch.RequestTransfer -> {
-                RequestTransferContent(revealedItemCount = revealedRequestTransferItemCount)
+                RequestTransferContent(
+                    resultText = chatGameUiState.resultTextFor(DoctorRequestTransferRequest),
+                    revealedItemCount = revealedRequestTransferItemCount
+                )
             }
 
             null -> Unit
@@ -471,6 +535,7 @@ private fun RunToPatientContent(
 
 @Composable
 private fun FocusPatientContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -479,7 +544,7 @@ private fun FocusPatientContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedDoctorChatItem(visible = revealedItemCount >= 1) {
-            MyChatElement(chatText = "지금 이 사람부터 볼게요.")
+            ChatNarrationText(text = resultText)
         }
 
         AnimatedDoctorChatItem(visible = revealedItemCount >= 2) {
@@ -557,6 +622,7 @@ private fun FocusPatientContent(
 
 @Composable
 private fun CheckPatientsContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -565,9 +631,7 @@ private fun CheckPatientsContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedDoctorChatItem(visible = revealedItemCount >= 1) {
-            ChatNarrationText(
-                text = "당신은 환자에게서 시선을 떼고 주변을 살핍니다."
-            )
+            ChatNarrationText(text = resultText)
         }
 
         AnimatedDoctorChatItem(visible = revealedItemCount >= 2) {
@@ -637,6 +701,7 @@ private fun CheckPatientsContent(
 
 @Composable
 private fun RequestTransferContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -645,7 +710,7 @@ private fun RequestTransferContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedDoctorChatItem(visible = revealedItemCount >= 1) {
-            MyChatElement(chatText = "이송해야 해. 들것 있어요?")
+            ChatNarrationText(text = resultText)
         }
 
         AnimatedDoctorChatItem(visible = revealedItemCount >= 2) {
@@ -673,6 +738,7 @@ private fun RequestTransferContent(
 
 @Composable
 private fun PrepareHospitalContent(
+    resultText: String,
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
@@ -681,7 +747,7 @@ private fun PrepareHospitalContent(
         modifier = modifier.fillMaxWidth()
     ) {
         AnimatedDoctorChatItem(visible = revealedItemCount >= 1) {
-            ChatNarrationText(text = "당신은 병원으로 돌아가 응급 환자를 맞을 준비를 합니다.")
+            ChatNarrationText(text = resultText)
         }
 
         HospitalOverloadItems(revealedItemCount = revealedItemCount, firstItemIndex = 2)

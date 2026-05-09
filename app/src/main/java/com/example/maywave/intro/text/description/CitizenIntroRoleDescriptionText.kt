@@ -2,6 +2,7 @@ package com.example.maywave.intro.text.description
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun CitizenIntroRoleDescriptionText(modifier: Modifier = Modifier) {

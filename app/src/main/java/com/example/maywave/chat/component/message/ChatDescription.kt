@@ -3,7 +3,6 @@ package com.example.maywave.chat.component.message
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -21,7 +20,6 @@ fun ChatDescription(
         color = ChatDescriptionTextColor,
         fontSize = 11.sp,
         fontWeight = FontWeight(400),
-        fontFamily = FontFamily.Serif,
         textAlign = TextAlign.Center,
         modifier = modifier
     )

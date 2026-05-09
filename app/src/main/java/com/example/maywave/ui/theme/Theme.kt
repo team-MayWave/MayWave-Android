@@ -52,7 +52,7 @@ fun MayWaveTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = MayWaveTypography,
         content = content
     )
 }

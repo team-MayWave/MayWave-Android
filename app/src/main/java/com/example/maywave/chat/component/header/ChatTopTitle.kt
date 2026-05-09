@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,7 +30,6 @@ fun ChatTopTitle(
             text = titleText,
             color = Color.White,
             fontSize = 25.sp,
-            fontFamily = FontFamily.Serif,
             fontWeight = FontWeight(600),
             lineHeight = 28.sp,
             letterSpacing = 0.sp,
@@ -45,8 +43,7 @@ fun ChatTopTitle(
             text = descriptionText,
             color = Color(0xFF5D5D5D),
             fontSize = 15.sp,
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.Normal,
+            fontWeight = FontWeight(400),
             lineHeight = 15.sp,
             letterSpacing = 0.sp,
             textAlign = TextAlign.Center,

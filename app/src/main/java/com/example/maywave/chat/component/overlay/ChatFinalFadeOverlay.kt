@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
@@ -109,7 +108,6 @@ private fun ChatFinalStepContent(
             text = step.text,
             color = Color.White.copy(alpha = 0.9f),
             fontSize = step.fontSize,
-            fontFamily = FontFamily.Serif,
             fontWeight = FontWeight(400),
             lineHeight = step.lineHeight,
             letterSpacing = 0.sp,
@@ -122,7 +120,6 @@ private fun ChatFinalStepContent(
                 text = "1980.05.18",
                 color = Color.White.copy(alpha = 0.9f),
                 fontSize = 14.sp,
-                fontFamily = FontFamily.Serif,
                 fontWeight = FontWeight(400),
                 letterSpacing = 0.sp,
                 textAlign = TextAlign.End,
