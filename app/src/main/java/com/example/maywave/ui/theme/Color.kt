@@ -22,3 +22,9 @@ val ChatDescriptionTextColor = Color(0xFF6F6F6F)
 
 
 val ChatFirstTextColor = Color(0xFFC5C5C5)
+
+val ChatInfoOverlayBackgroundColor = Color(0xFF191919)
+val ChatInfoOverlayHistoryBackgroundColor = Color(0xFF474747)
+val ChatInfoOverlayHistoryTitleColor = Color(0xFFFBF7C3)
+val ChatInfoOverlayDescriptionTextColor = Color(0xFF959595)
+val ChatInfoOverlayHistoryTextColor = Color(0xFFEDEDED)

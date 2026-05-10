@@ -15,3 +15,14 @@ val NanumMyeongjo = FontFamily(
         weight = FontWeight(600)
     )
 )
+
+val Pretendard = FontFamily(
+    Font(
+        resId = R.font.pretendard_regular,
+        weight = FontWeight(400)
+    ),
+    Font(
+        resId = R.font.pretendard_medium,
+        weight = FontWeight(500)
+    )
+)

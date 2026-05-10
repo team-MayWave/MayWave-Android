@@ -1,5 +1,6 @@
 package com.example.maywave.data.repository
 
+import com.example.maywave.data.dto.GamePlayRequestDto
 import com.example.maywave.data.remote.ApiService
 
 class GamePlayRepository(
@@ -12,11 +13,13 @@ class GamePlayRepository(
         choice: Int
     ): Result<String> {
         return try {
-            val responseDto = apiService.playGame(
+            val requestDto = GamePlayRequestDto(
                 roleId = roleId,
                 scenarioId = scenarioId,
                 choice = choice
             )
+
+            val responseDto = apiService.playGame(requestDto)
 
             Result.success(responseDto.message)
         } catch (exception: Exception) {

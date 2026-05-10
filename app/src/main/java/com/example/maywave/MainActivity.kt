@@ -20,9 +20,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.maywave.chat.navigation.ChatRoute
+import com.example.maywave.chat.component.overlay.ChatInfoOverlay
+import com.example.maywave.chat.component.overlay.chatInfoOverlayContentFor
 import com.example.maywave.chat.screen.CitizenChatScreen
 import com.example.maywave.chat.screen.DoctorChatScreen
 import com.example.maywave.chat.screen.ReporterChatScreen
@@ -45,8 +49,12 @@ class MainActivity : ComponentActivity() {
                 var currentRoute by rememberSaveable(stateSaver = ChatRouteSaver) {
                     mutableStateOf(ChatRoute.Intro)
                 }
+                var showInfoUnreadDot by rememberSaveable { mutableStateOf(false) }
+                var latestInfoUnreadStateKey by rememberSaveable { mutableStateOf<String?>(null) }
+                var activeInfoStateKey by rememberSaveable { mutableStateOf<String?>(null) }
                 var pendingChatRoute by remember { mutableStateOf<ChatRoute?>(null) }
                 var transitionPhase by remember { mutableStateOf(RouteTransitionPhase.Idle) }
+                val activeInfoContent = chatInfoOverlayContentFor(activeInfoStateKey)
                 val routeFadeDurationMillis = when (transitionPhase) {
                     RouteTransitionPhase.FadingOutChat,
                     RouteTransitionPhase.FadingInIntro -> BACK_TO_INTRO_FADE_DURATION_MILLIS
@@ -110,6 +118,19 @@ class MainActivity : ComponentActivity() {
                         transitionPhase = RouteTransitionPhase.FadingOutIntro
                     }
                 }
+                val showInfoUnreadDotForState = { stateKey: String ->
+                    if (latestInfoUnreadStateKey != stateKey) {
+                        latestInfoUnreadStateKey = stateKey
+                        showInfoUnreadDot = true
+                    }
+                }
+                val showChatInfoOverlay = {
+                    val stateKey = latestInfoUnreadStateKey
+                    if (chatInfoOverlayContentFor(stateKey) != null) {
+                        activeInfoStateKey = stateKey
+                        showInfoUnreadDot = false
+                    }
+                }
 
                 Box(
                     modifier = Modifier
@@ -120,11 +141,16 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .alpha(screenAlpha)
+                            .blur(if (activeInfoContent != null) CHAT_INFO_BACKGROUND_BLUR else 0.dp)
                     ) {
                         when (currentRoute) {
                             ChatRoute.Citizen -> {
                                 CitizenChatScreen(
                                     onBackClick = navigateBackToIntro,
+                                    onInfoClick = showChatInfoOverlay,
+                                    showInfoUnreadDot = showInfoUnreadDot,
+                                    onInfoRead = { showInfoUnreadDot = false },
+                                    onInfoUnreadStateShown = showInfoUnreadDotForState,
                                     modifier = Modifier.systemBarsPadding()
                                 )
                             }
@@ -132,6 +158,10 @@ class MainActivity : ComponentActivity() {
                             ChatRoute.Doctor -> {
                                 DoctorChatScreen(
                                     onBackClick = navigateBackToIntro,
+                                    onInfoClick = showChatInfoOverlay,
+                                    showInfoUnreadDot = showInfoUnreadDot,
+                                    onInfoRead = { showInfoUnreadDot = false },
+                                    onInfoUnreadStateShown = showInfoUnreadDotForState,
                                     modifier = Modifier.systemBarsPadding()
                                 )
                             }
@@ -139,6 +169,10 @@ class MainActivity : ComponentActivity() {
                             ChatRoute.Reporter -> {
                                 ReporterChatScreen(
                                     onBackClick = navigateBackToIntro,
+                                    onInfoClick = showChatInfoOverlay,
+                                    showInfoUnreadDot = showInfoUnreadDot,
+                                    onInfoRead = { showInfoUnreadDot = false },
+                                    onInfoUnreadStateShown = showInfoUnreadDotForState,
                                     modifier = Modifier.systemBarsPadding()
                                 )
                             }
@@ -147,6 +181,14 @@ class MainActivity : ComponentActivity() {
                                 Intro(onStartChat = startChatWithFade)
                             }
                         }
+                    }
+
+                    activeInfoContent?.let { content ->
+                        ChatInfoOverlay(
+                            content = content,
+                            onCloseClick = { activeInfoStateKey = null },
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
             }
@@ -157,6 +199,7 @@ class MainActivity : ComponentActivity() {
         const val SPLASH_DURATION_MILLIS = 1_500L
         const val INTRO_TO_CHAT_FADE_DURATION_MILLIS = 1_500L
         const val BACK_TO_INTRO_FADE_DURATION_MILLIS = 2_000L
+        val CHAT_INFO_BACKGROUND_BLUR = 2.dp
 
         val ChatRouteSaver = Saver<ChatRoute, String>(
             save = { it.route },

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.maywave.R
 import com.example.maywave.chat.component.choice.ChatChoiceElement
+import com.example.maywave.chat.component.header.ChatInfoButton
 import com.example.maywave.chat.component.header.ChatTopTitle
 import com.example.maywave.chat.component.header.ElementTitle
 import com.example.maywave.chat.component.media.ChatSceneImage
@@ -54,9 +55,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
+private const val REPORTER_RECORD_TRANSITION_DURATION_MILLIS = 2_000
 private const val REPORTER_INITIAL_ELEMENT_COUNT = 10
 private const val REPORTER_CONTINUE_RECORD_ELEMENT_COUNT = 11
 private const val REPORTER_ESCAPE_ELEMENT_COUNT = 5
+private const val REPORTER_CONTINUE_RECORD_ITEM_INDEX = 11
+private const val REPORTER_ESCAPE_RECORD_ITEM_INDEX = 5
 private const val REPORTER_INITIAL_LAZY_ITEM_INDEX = 0
 private const val REPORTER_BRANCH_LAZY_ITEM_INDEX = 1
 private val REPORTER_CHAT_ELEMENT_SPACING = 35.dp
@@ -68,7 +72,11 @@ private val ReporterEscapeRequest = ChatGameRequest(roleId = 3, scenarioId = 5, 
 @Composable
 fun ReporterChatScreen(
     modifier: Modifier = Modifier,
-    onBackClick: () -> Unit = {}
+    onBackClick: () -> Unit = {},
+    onInfoClick: () -> Unit = {},
+    showInfoUnreadDot: Boolean = true,
+    onInfoRead: () -> Unit = {},
+    onInfoUnreadStateShown: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val chatGameViewModel: ChatGameViewModel = viewModel(
@@ -77,6 +85,8 @@ fun ReporterChatScreen(
     val chatGameUiState by chatGameViewModel.uiState.collectAsState()
     var selectedBranch by rememberSaveable { mutableStateOf<ReporterChatBranch?>(null) }
     var branchRevealKey by rememberSaveable { mutableIntStateOf(0) }
+    var isContinueRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
+    var isEscapeRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
     val shouldFollowNewContent = rememberReporterShouldFollowNewContent(listState = listState)
     val continueRecordItemCount = if (chatGameUiState.hasErrorFor(ReporterContinueRecordRequest)) {
         1
@@ -96,21 +106,39 @@ fun ReporterChatScreen(
         itemCount = continueRecordItemCount,
         revealKey = branchRevealKey,
         enabled = selectedBranch == ReporterChatBranch.ContinueRecord &&
-            chatGameUiState.isResultReadyFor(ReporterContinueRecordRequest)
+            chatGameUiState.isResultReadyFor(ReporterContinueRecordRequest),
+        blockedAfterItemIndex = REPORTER_CONTINUE_RECORD_ITEM_INDEX,
+        canRevealAfterBlockedItem = isContinueRecordTypingFinished
     )
     val revealedEscapeItemCount = rememberReporterSequentialRevealCount(
         itemCount = escapeItemCount,
         revealKey = branchRevealKey,
         enabled = selectedBranch == ReporterChatBranch.Escape &&
-            chatGameUiState.isResultReadyFor(ReporterEscapeRequest)
+            chatGameUiState.isResultReadyFor(ReporterEscapeRequest),
+        blockedAfterItemIndex = REPORTER_ESCAPE_RECORD_ITEM_INDEX,
+        canRevealAfterBlockedItem = isEscapeRecordTypingFinished
     )
     val finalSequenceKey = when {
         selectedBranch == ReporterChatBranch.ContinueRecord &&
-            revealedContinueRecordItemCount >= REPORTER_CONTINUE_RECORD_ELEMENT_COUNT -> "reporter_continue_record"
+            revealedContinueRecordItemCount >= REPORTER_CONTINUE_RECORD_ELEMENT_COUNT &&
+            isContinueRecordTypingFinished -> "reporter_continue_record"
         selectedBranch == ReporterChatBranch.Escape &&
-            revealedEscapeItemCount >= REPORTER_ESCAPE_ELEMENT_COUNT -> "reporter_escape"
+            revealedEscapeItemCount >= REPORTER_ESCAPE_ELEMENT_COUNT &&
+            isEscapeRecordTypingFinished -> "reporter_escape"
         else -> null
     }
+    val infoUnreadStateKey = reporterInfoUnreadStateKey(
+        selectedBranch = selectedBranch,
+        revealedInitialItemCount = revealedInitialItemCount,
+        revealedContinueRecordItemCount = revealedContinueRecordItemCount,
+        revealedEscapeItemCount = revealedEscapeItemCount,
+        finalSequenceKey = finalSequenceKey
+    )
+
+    LaunchedEffect(infoUnreadStateKey) {
+        infoUnreadStateKey?.let(onInfoUnreadStateShown)
+    }
+
     AutoScrollOnReporterReveal(
         listState = listState,
         revealKey = revealedInitialItemCount,
@@ -146,7 +174,12 @@ fun ReporterChatScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxSize()
         ) {
-            ReporterChatHeader(onBackClick = onBackClick)
+            ReporterChatHeader(
+                onBackClick = onBackClick,
+                onInfoClick = onInfoClick,
+                showInfoUnreadDot = showInfoUnreadDot && infoUnreadStateKey != null,
+                onInfoRead = onInfoRead
+            )
 
             LazyColumn(
                 state = listState,
@@ -164,11 +197,15 @@ fun ReporterChatScreen(
                         onContinueRecordClick = {
                             selectedBranch = ReporterChatBranch.ContinueRecord
                             branchRevealKey += 1
+                            isContinueRecordTypingFinished = false
+                            isEscapeRecordTypingFinished = false
                             chatGameViewModel.submitChoice(ReporterContinueRecordRequest)
                         },
                         onEscapeClick = {
                             selectedBranch = ReporterChatBranch.Escape
                             branchRevealKey += 1
+                            isContinueRecordTypingFinished = false
+                            isEscapeRecordTypingFinished = false
                             chatGameViewModel.submitChoice(ReporterEscapeRequest)
                         }
                     )
@@ -179,7 +216,11 @@ fun ReporterChatScreen(
                         item {
                             ContinueRecordContent(
                                 resultText = chatGameUiState.resultTextFor(ReporterContinueRecordRequest),
-                                revealedItemCount = revealedContinueRecordItemCount
+                                revealedItemCount = revealedContinueRecordItemCount,
+                                isRecordTypingFinished = isContinueRecordTypingFinished,
+                                onRecordTypingFinished = {
+                                    isContinueRecordTypingFinished = true
+                                }
                             )
                         }
                     }
@@ -188,7 +229,10 @@ fun ReporterChatScreen(
                         item {
                             EscapeContent(
                                 resultText = chatGameUiState.resultTextFor(ReporterEscapeRequest),
-                                revealedItemCount = revealedEscapeItemCount
+                                revealedItemCount = revealedEscapeItemCount,
+                                onRecordTypingFinished = {
+                                    isEscapeRecordTypingFinished = true
+                                }
                             )
                         }
                     }
@@ -219,7 +263,10 @@ fun ReporterChatScreen(
 @Composable
 private fun ReporterChatHeader(
     modifier: Modifier = Modifier,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onInfoClick: () -> Unit,
+    showInfoUnreadDot: Boolean,
+    onInfoRead: () -> Unit
 ) {
     Box(
         modifier = modifier
@@ -238,6 +285,15 @@ private fun ReporterChatHeader(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
+        )
+
+        ChatInfoButton(
+            onClick = onInfoClick,
+            showUnreadDot = showInfoUnreadDot,
+            onRead = onInfoRead,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 30.dp, top = 18.dp)
         )
     }
 }
@@ -315,6 +371,33 @@ private fun InitialReporterContent(
 private fun ContinueRecordContent(
     resultText: String,
     revealedItemCount: Int,
+    isRecordTypingFinished: Boolean,
+    onRecordTypingFinished: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(REPORTER_BRANCH_CHAT_ELEMENT_SPACING),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        if (revealedItemCount < REPORTER_CONTINUE_RECORD_ITEM_INDEX - 1) {
+            ContinueRecordBeforeItems(
+                resultText = resultText,
+                revealedItemCount = revealedItemCount
+            )
+        } else {
+            ContinueRecordTransition(
+                resultText = resultText,
+                isTransitionFinished = isRecordTypingFinished,
+                onRecordTypingFinished = onRecordTypingFinished
+            )
+        }
+    }
+}
+
+@Composable
+private fun ContinueRecordBeforeItems(
+    resultText: String,
+    revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -362,19 +445,78 @@ private fun ContinueRecordContent(
         AnimatedReporterChatItem(visible = revealedItemCount >= 9) {
             ChatNarrationText(text = "그 순간까지 기록합니다.")
         }
+    }
+}
 
-        AnimatedReporterChatItem(visible = revealedItemCount >= 10) {
-            ChatSceneImage(
-                imageResId = R.drawable.chat_reportor_3,
-                contentDescription = "군인을 촬영하는 기자"
-            )
+@Composable
+private fun ContinueRecordTransition(
+    resultText: String,
+    isTransitionFinished: Boolean,
+    onRecordTypingFinished: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isBeforeRecordVisible by remember { mutableStateOf(!isTransitionFinished) }
+    var isRecordVisible by remember { mutableStateOf(isTransitionFinished) }
+    val beforeRecordAlpha by animateFloatAsState(
+        targetValue = if (isBeforeRecordVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = REPORTER_RECORD_TRANSITION_DURATION_MILLIS),
+        label = "reporter before record alpha"
+    )
+    val recordAlpha by animateFloatAsState(
+        targetValue = if (isRecordVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = REPORTER_RECORD_TRANSITION_DURATION_MILLIS),
+        label = "reporter record alpha"
+    )
+
+    LaunchedEffect(isTransitionFinished) {
+        if (isTransitionFinished) {
+            isBeforeRecordVisible = false
+            isRecordVisible = true
+            return@LaunchedEffect
         }
 
-        AnimatedReporterChatItem(visible = revealedItemCount >= 11) {
-            ChatRecord(
-                bodyText = "광주에서 벌어진 일들은 많은 기록을 통해 이후 세상에 알려지게 되었습니다."
+        isBeforeRecordVisible = true
+        isRecordVisible = false
+        isBeforeRecordVisible = false
+        delay(REPORTER_RECORD_TRANSITION_DURATION_MILLIS.toLong())
+        isRecordVisible = true
+    }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        ContinueRecordBeforeItems(
+            resultText = resultText,
+            revealedItemCount = REPORTER_CONTINUE_RECORD_ITEM_INDEX - 2,
+            modifier = Modifier.alpha(beforeRecordAlpha)
+        )
+
+        if (isRecordVisible || isTransitionFinished) {
+            ContinueRecordItems(
+                onRecordTypingFinished = onRecordTypingFinished,
+                modifier = Modifier.alpha(recordAlpha)
             )
         }
+    }
+}
+
+@Composable
+private fun ContinueRecordItems(
+    onRecordTypingFinished: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(REPORTER_BRANCH_CHAT_ELEMENT_SPACING),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        ChatSceneImage(
+            imageResId = R.drawable.reporter_gumnamro_record,
+            contentDescription = "광주 현장을 촬영하는 기자",
+            height = 222.dp
+        )
+
+        ChatRecord(
+            bodyText = "독일 기자 힌츠페터는 광주에 잠입해 시민들과 계엄군의 충돌 현장을\n카메라에 기록했습니다.\n그는 금남로와 전남도청 일대에서 촬영한 영상과 사진들을 해외로 전달했고,\n이는 이후 광주의 상황이 세계에 알려지는 중요한 계기가 되었습니다.",
+            onTypingFinished = onRecordTypingFinished
+        )
     }
 }
 
@@ -382,6 +524,7 @@ private fun ContinueRecordContent(
 private fun EscapeContent(
     resultText: String,
     revealedItemCount: Int,
+    onRecordTypingFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -411,7 +554,8 @@ private fun EscapeContent(
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 5) {
             ChatRecord(
-                bodyText = "광주에서는 많은 사건들이 발생했지만, 모든 순간이 기록되지는 않았습니다."
+                bodyText = "광주에서는 많은 사건들이 발생했지만, 모든 순간이 기록되지는 않았습니다.",
+                onTypingFinished = onRecordTypingFinished
             )
         }
     }
@@ -422,14 +566,24 @@ private fun rememberReporterSequentialRevealCount(
     itemCount: Int,
     revealKey: Any? = Unit,
     initiallyVisibleItemCount: Int = 0,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    blockedAfterItemIndex: Int? = null,
+    canRevealAfterBlockedItem: Boolean = true
 ): Int {
     val initialItemCount = initiallyVisibleItemCount.coerceIn(0, itemCount)
+    val blockedItemIndex = blockedAfterItemIndex?.coerceIn(0, itemCount)
     var revealedItemCount by rememberSaveable(revealKey) {
         mutableIntStateOf(initiallyVisibleItemCount.coerceIn(0, itemCount))
     }
 
-    LaunchedEffect(revealKey, itemCount, initialItemCount, enabled) {
+    LaunchedEffect(
+        revealKey,
+        itemCount,
+        initialItemCount,
+        enabled,
+        blockedItemIndex,
+        canRevealAfterBlockedItem
+    ) {
         if (!enabled) {
             revealedItemCount = 0
             return@LaunchedEffect
@@ -438,6 +592,14 @@ private fun rememberReporterSequentialRevealCount(
         revealedItemCount = revealedItemCount.coerceAtLeast(initialItemCount)
 
         while (revealedItemCount < itemCount) {
+            if (
+                blockedItemIndex != null &&
+                revealedItemCount >= blockedItemIndex &&
+                !canRevealAfterBlockedItem
+            ) {
+                return@LaunchedEffect
+            }
+
             delay(REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
             revealedItemCount += 1
         }
@@ -542,6 +704,26 @@ private fun AnimatedReporterChatItem(
 private enum class ReporterChatBranch {
     ContinueRecord,
     Escape
+}
+
+private fun reporterInfoUnreadStateKey(
+    selectedBranch: ReporterChatBranch?,
+    revealedInitialItemCount: Int,
+    revealedContinueRecordItemCount: Int,
+    revealedEscapeItemCount: Int,
+    finalSequenceKey: String?
+): String? {
+    if (finalSequenceKey != null) return null
+
+    return when {
+        selectedBranch == ReporterChatBranch.ContinueRecord &&
+            revealedContinueRecordItemCount >= 10 -> "reporter_continue_record_scene"
+        selectedBranch == ReporterChatBranch.Escape &&
+            revealedEscapeItemCount >= 4 -> "reporter_escape_scene"
+        selectedBranch == null &&
+            revealedInitialItemCount >= REPORTER_INITIAL_ELEMENT_COUNT -> "reporter_intro_choice"
+        else -> null
+    }
 }
 
 private data class ReporterAutoScrollSnapshot(
