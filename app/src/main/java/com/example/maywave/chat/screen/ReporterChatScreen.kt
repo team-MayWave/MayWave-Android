@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +40,7 @@ import com.example.maywave.chat.component.header.ChatInfoButton
 import com.example.maywave.chat.component.header.ChatTopTitle
 import com.example.maywave.chat.component.header.ElementTitle
 import com.example.maywave.chat.component.media.ChatSceneImage
+import com.example.maywave.chat.component.message.ChatFirstText
 import com.example.maywave.chat.component.message.ChatNarrationText
 import com.example.maywave.chat.component.message.MyChatElement
 import com.example.maywave.chat.component.message.OtherChatElement
@@ -58,12 +60,15 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
 private const val REPORTER_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS = 4_000
-private const val REPORTER_INITIAL_ELEMENT_COUNT = 10
+private const val REPORTER_INITIAL_ELEMENT_COUNT = 21
+private const val REPORTER_INTRO_SOUND_STOP_ITEM_COUNT = REPORTER_INITIAL_ELEMENT_COUNT
+private const val REPORTER_INITIAL_SCENE_SOUND_START_ITEM_COUNT = 8
+private const val REPORTER_INITIAL_SCENE_SOUND_FADE_ITEM_COUNT = 17
 private const val REPORTER_CONTINUE_RECORD_ELEMENT_COUNT = 11
 private const val REPORTER_ESCAPE_ELEMENT_COUNT = 5
 private const val REPORTER_CONTINUE_RECORD_DETAIL_ITEM_INDEX = 10
 private const val REPORTER_CONTINUE_RECORD_ITEM_INDEX = 11
-private const val REPORTER_ESCAPE_RECORD_ITEM_INDEX = 5
+private const val REPORTER_ESCAPE_RECORD_ITEM_INDEX = 4
 private const val REPORTER_INITIAL_LAZY_ITEM_INDEX = 0
 private const val REPORTER_BRANCH_LAZY_ITEM_INDEX = 1
 private const val REPORTER_AUTO_SCROLL_LAYOUT_DELAY_MILLIS = 100
@@ -82,7 +87,15 @@ fun ReporterChatScreen(
     onInfoClick: () -> Unit = {},
     showInfoUnreadDot: Boolean = true,
     onInfoRead: () -> Unit = {},
-    onInfoUnreadStateShown: (String) -> Unit = {}
+    onInfoUnreadStateShown: (String) -> Unit = {},
+    isChatPaused: Boolean = false,
+    onIntroSceneFinished: () -> Unit = {},
+    onChoiceClickSound: () -> Unit = {},
+    onPlayAirborneCrackdownSceneSound: () -> Unit = {},
+    onFadeOutAirborneCrackdownSceneSound: () -> Unit = {},
+    onStopAirborneCrackdownSceneSound: () -> Unit = {},
+    onPlayRecordTypingSound: () -> Unit = {},
+    onStopRecordTypingSound: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val chatGameViewModel: ChatGameViewModel = viewModel(
@@ -93,7 +106,16 @@ fun ReporterChatScreen(
     var branchRevealKey by rememberSaveable { mutableIntStateOf(0) }
     var isContinueRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
     var isEscapeRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
+    var hasNotifiedIntroSceneFinished by rememberSaveable { mutableStateOf(false) }
+    var isInitialSceneSoundPlaying by remember { mutableStateOf(false) }
     val shouldFollowNewContent = rememberReporterShouldFollowNewContent(listState = listState)
+    val isRevealPaused = isChatPaused || !shouldFollowNewContent
+    val currentOnIntroSceneFinished by rememberUpdatedState(onIntroSceneFinished)
+    val currentOnPlayAirborneCrackdownSceneSound by rememberUpdatedState(onPlayAirborneCrackdownSceneSound)
+    val currentOnFadeOutAirborneCrackdownSceneSound by rememberUpdatedState(onFadeOutAirborneCrackdownSceneSound)
+    val currentOnStopAirborneCrackdownSceneSound by rememberUpdatedState(onStopAirborneCrackdownSceneSound)
+    val currentOnPlayRecordTypingSound by rememberUpdatedState(onPlayRecordTypingSound)
+    val currentOnStopRecordTypingSound by rememberUpdatedState(onStopRecordTypingSound)
     val continueRecordItemCount = if (chatGameUiState.hasErrorFor(ReporterContinueRecordRequest)) {
         1
     } else {
@@ -106,7 +128,8 @@ fun ReporterChatScreen(
     }
     val revealedInitialItemCount = rememberReporterSequentialRevealCount(
         itemCount = REPORTER_INITIAL_ELEMENT_COUNT,
-        initiallyVisibleItemCount = 1
+        initiallyVisibleItemCount = 1,
+        isPaused = isRevealPaused
     )
     val revealedContinueRecordItemCount = rememberReporterSequentialRevealCount(
         itemCount = continueRecordItemCount,
@@ -115,7 +138,8 @@ fun ReporterChatScreen(
             chatGameUiState.isResultReadyFor(ReporterContinueRecordRequest),
         blockedAfterItemIndex = REPORTER_CONTINUE_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isContinueRecordTypingFinished,
-        firstItemNextRevealDelayMillis = REPORTER_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = REPORTER_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedEscapeItemCount = rememberReporterSequentialRevealCount(
         itemCount = escapeItemCount,
@@ -124,7 +148,8 @@ fun ReporterChatScreen(
             chatGameUiState.isResultReadyFor(ReporterEscapeRequest),
         blockedAfterItemIndex = REPORTER_ESCAPE_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isEscapeRecordTypingFinished,
-        firstItemNextRevealDelayMillis = REPORTER_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = REPORTER_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val finalSequenceKey = when {
         selectedBranch == ReporterChatBranch.ContinueRecord &&
@@ -150,6 +175,49 @@ fun ReporterChatScreen(
 
     LaunchedEffect(infoUnreadStateKey) {
         infoUnreadStateKey?.let(onInfoUnreadStateShown)
+    }
+
+    LaunchedEffect(revealedInitialItemCount, isRevealPaused, hasNotifiedIntroSceneFinished) {
+        if (
+            !hasNotifiedIntroSceneFinished &&
+            !isRevealPaused &&
+            revealedInitialItemCount >= REPORTER_INTRO_SOUND_STOP_ITEM_COUNT
+        ) {
+            delay(REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
+            hasNotifiedIntroSceneFinished = true
+            currentOnIntroSceneFinished()
+        }
+    }
+
+    LaunchedEffect(revealedInitialItemCount, isRevealPaused, isInitialSceneSoundPlaying) {
+        val shouldPlayInitialSceneSound = !isRevealPaused &&
+            revealedInitialItemCount in (
+                REPORTER_INITIAL_SCENE_SOUND_START_ITEM_COUNT until REPORTER_INITIAL_SCENE_SOUND_FADE_ITEM_COUNT
+            )
+
+        when {
+            shouldPlayInitialSceneSound && !isInitialSceneSoundPlaying -> {
+                currentOnPlayAirborneCrackdownSceneSound()
+                isInitialSceneSoundPlaying = true
+            }
+
+            !shouldPlayInitialSceneSound && isInitialSceneSoundPlaying &&
+                revealedInitialItemCount >= REPORTER_INITIAL_SCENE_SOUND_FADE_ITEM_COUNT -> {
+                currentOnFadeOutAirborneCrackdownSceneSound()
+                isInitialSceneSoundPlaying = false
+            }
+
+            !shouldPlayInitialSceneSound && isInitialSceneSoundPlaying -> {
+                currentOnStopAirborneCrackdownSceneSound()
+                isInitialSceneSoundPlaying = false
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnStopAirborneCrackdownSceneSound()
+        }
     }
 
     AutoScrollOnReporterReveal(
@@ -198,7 +266,10 @@ fun ReporterChatScreen(
                     null -> Unit
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            isPaused = isRevealPaused,
+            onRecordTypingAnimationStarted = currentOnPlayRecordTypingSound,
+            onRecordTypingAnimationFinished = currentOnStopRecordTypingSound
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -233,7 +304,8 @@ fun ReporterChatScreen(
                                 selectedBranch = ReporterChatBranch.Escape
                                 branchRevealKey += 1
                                 chatGameViewModel.submitChoice(ReporterEscapeRequest)
-                            }
+                            },
+                            onChoiceClickSound = onChoiceClickSound
                         )
                     }
 
@@ -332,6 +404,7 @@ private fun InitialReporterContent(
     selectedBranch: ReporterChatBranch?,
     onContinueRecordClick: () -> Unit,
     onEscapeClick: () -> Unit,
+    onChoiceClickSound: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -344,35 +417,41 @@ private fun InitialReporterContent(
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 2) {
             ChatSceneImage(
-                imageResId = R.drawable.chat_reporter_1,
-                contentDescription = "군인들과 시민들이 뒤엉킨 금남로"
+                imageResId = R.drawable.chat_first_img,
+                contentDescription = "금남로에 모인 시민들",
+                height = 214.dp
             )
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 3) {
-            ChatNarrationText(text = "군인들과 시민들이\n뒤엉켜 있습니다.")
+            ChatFirstText(text = "시내 분위기가 심상치 않습니다")
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 4) {
-            ChatNarrationText(text = "부상자들이 계속 발생하고 있습니다.")
+            ChatFirstText(text = "사람들이 모여들기 시작합니다")
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 5) {
-            MyChatElement(chatText = "이건...")
+            ChatNarrationText(
+                text = "당신은 소식을 듣고 현장에 도착했습니다.\n이미 충돌이 벌어진 뒤였습니다."
+            )
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 6) {
-            MyChatElement(chatText = "남겨야 돼..")
+            MyChatElement(chatText = "....")
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 7) {
             ChatNarrationText(
-                text = "당신이 카메라를 들고 있는 순간,\n한 군인이 당신을 바라봅니다."
+                text = "사람들이 흩어져 있고,\n곳곳에서 혼란이 이어지고 있습니다."
             )
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 8) {
-            ChatNarrationText(text = "시선이 마주칩니다.")
+            OtherChatElement(
+                nameText = "주변 시민",
+                chatText = "다쳤어요 여기 좀 봐주세요!"
+            )
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 9) {
@@ -380,6 +459,55 @@ private fun InitialReporterContent(
         }
 
         AnimatedReporterChatItem(visible = revealedItemCount >= 10) {
+            MyChatElement(chatText = "카메라... 켜")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 11) {
+            ChatNarrationText(text = "당신은 상황을 기록하기 시작합니다.")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 12) {
+            ChatNarrationText(text = "현장의 모든 장면이 렌즈에 담깁니다.")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 13) {
+            ChatSceneImage(
+                imageResId = R.drawable.chat_reporter_1,
+                contentDescription = "군인들과 시민들이 뒤엉킨 금남로"
+            )
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 14) {
+            ChatNarrationText(text = "군인들과 시민들이\n뒤엉켜 있습니다.")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 15) {
+            ChatNarrationText(text = "부상자들이 계속 발생하고 있습니다.")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 16) {
+            MyChatElement(chatText = "이건...")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 17) {
+            MyChatElement(chatText = "남겨야 돼..")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 18) {
+            ChatNarrationText(
+                text = "당신이 카메라를 들고 있는 순간,\n한 군인이 당신을 바라봅니다."
+            )
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 19) {
+            ChatNarrationText(text = "시선이 마주칩니다.")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 20) {
+            MyChatElement(chatText = "....")
+        }
+
+        AnimatedReporterChatItem(visible = revealedItemCount >= 21) {
             ChatChoiceElement(
                 firstChoiceText = "계속 촬영한다",
                 secondChoiceText = "도망친다",
@@ -389,7 +517,8 @@ private fun InitialReporterContent(
                     ReporterChatBranch.ContinueRecord -> 0
                     ReporterChatBranch.Escape -> 1
                     null -> null
-                }
+                },
+                onChoiceClickSound = onChoiceClickSound
             )
         }
     }
@@ -498,13 +627,6 @@ private fun EscapeContent(
             MyChatElement(chatText = "...")
         }
 
-        AnimatedReporterChatItem(visible = revealedItemCount >= 4) {
-            ChatSceneImage(
-                imageResId = R.drawable.chat_reportor_2,
-                contentDescription = "군인을 피해 달아나는 기자"
-            )
-        }
-
     }
 }
 
@@ -516,7 +638,8 @@ private fun rememberReporterSequentialRevealCount(
     enabled: Boolean = true,
     blockedAfterItemIndex: Int? = null,
     canRevealAfterBlockedItem: Boolean = true,
-    firstItemNextRevealDelayMillis: Int = REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS
+    firstItemNextRevealDelayMillis: Int = REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS,
+    isPaused: Boolean = false
 ): Int {
     val initialItemCount = initiallyVisibleItemCount.coerceIn(0, itemCount)
     val blockedItemIndex = blockedAfterItemIndex?.coerceIn(0, itemCount)
@@ -531,12 +654,15 @@ private fun rememberReporterSequentialRevealCount(
         enabled,
         blockedItemIndex,
         canRevealAfterBlockedItem,
-        firstItemNextRevealDelayMillis
+        firstItemNextRevealDelayMillis,
+        isPaused
     ) {
         if (!enabled) {
             revealedItemCount = 0
             return@LaunchedEffect
         }
+
+        if (isPaused) return@LaunchedEffect
 
         revealedItemCount = revealedItemCount.coerceAtLeast(initialItemCount)
 

@@ -42,7 +42,8 @@ fun ChatChoiceElement(
     modifier: Modifier = Modifier,
     thirdChoiceText: String? = null,
     onThirdChoiceClick: (() -> Unit)? = null,
-    selectedChoiceIndex: Int? = null
+    selectedChoiceIndex: Int? = null,
+    onChoiceClickSound: () -> Unit = {}
 ) {
     val isChoiceLocked = selectedChoiceIndex != null
 
@@ -62,7 +63,10 @@ fun ChatChoiceElement(
         ) {
             ChoiceButton(
                 text = firstChoiceText,
-                onClick = onFirstChoiceClick,
+                onClick = {
+                    onChoiceClickSound()
+                    onFirstChoiceClick()
+                },
                 isSelected = selectedChoiceIndex == FIRST_CHOICE_INDEX,
                 isDimmed = selectedChoiceIndex != null && selectedChoiceIndex != FIRST_CHOICE_INDEX,
                 enabled = !isChoiceLocked
@@ -72,7 +76,10 @@ fun ChatChoiceElement(
 
             ChoiceButton(
                 text = secondChoiceText,
-                onClick = onSecondChoiceClick,
+                onClick = {
+                    onChoiceClickSound()
+                    onSecondChoiceClick()
+                },
                 isSelected = selectedChoiceIndex == SECOND_CHOICE_INDEX,
                 isDimmed = selectedChoiceIndex != null && selectedChoiceIndex != SECOND_CHOICE_INDEX,
                 enabled = !isChoiceLocked
@@ -83,7 +90,10 @@ fun ChatChoiceElement(
 
                 ChoiceButton(
                     text = thirdChoiceText,
-                    onClick = onThirdChoiceClick,
+                    onClick = {
+                        onChoiceClickSound()
+                        onThirdChoiceClick()
+                    },
                     isSelected = selectedChoiceIndex == THIRD_CHOICE_INDEX,
                     isDimmed = selectedChoiceIndex != null && selectedChoiceIndex != THIRD_CHOICE_INDEX,
                     enabled = !isChoiceLocked

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +40,8 @@ import kotlinx.coroutines.delay
 
 private const val RECORD_DETAIL_BEFORE_FADE_DELAY_MILLIS = 2_000
 private const val RECORD_DETAIL_TRANSITION_DURATION_MILLIS = 2_000
+private const val RECORD_DETAIL_AUTO_SCROLL_LAYOUT_DELAY_MILLIS = 24L
+private const val RECORD_DETAIL_AUTO_SCROLL_STEP_PX = 12f
 
 data class ChatRecordDetailContent(
     @DrawableRes val imageResId: Int,
@@ -54,35 +58,83 @@ fun ChatRecordDetailScreen(
     content: ChatRecordDetailContent,
     onRecordTypingFinished: () -> Unit,
     modifier: Modifier = Modifier,
-    startTyping: Boolean = true
+    startTyping: Boolean = true,
+    isPaused: Boolean = false,
+    onRecordTypingAnimationStarted: () -> Unit = {},
+    onRecordTypingAnimationFinished: () -> Unit = {}
 ) {
     val currentOnRecordTypingFinished by rememberUpdatedState(onRecordTypingFinished)
+    val currentOnRecordTypingAnimationStarted by rememberUpdatedState(onRecordTypingAnimationStarted)
+    val currentOnRecordTypingAnimationFinished by rememberUpdatedState(onRecordTypingAnimationFinished)
+    val listState = rememberLazyListState()
     var isRecordTypingFinished by remember(content, startTyping) { mutableStateOf(false) }
+    var recordTypingProgressKey by remember(content, startTyping) { mutableIntStateOf(0) }
     var bottomTextVisibleCharacterCount by remember(
         content.bottomText,
         startTyping
     ) {
         mutableIntStateOf(0)
     }
+    var hasNotifiedBottomTypingFinished by remember(
+        content.bottomText,
+        startTyping
+    ) {
+        mutableStateOf(false)
+    }
 
-    LaunchedEffect(content.bottomText, isRecordTypingFinished, startTyping) {
+    LaunchedEffect(content.bottomText, isRecordTypingFinished, startTyping, isPaused) {
         val bottomText = content.bottomText
 
         if (bottomText == null || !startTyping) {
             bottomTextVisibleCharacterCount = 0
+            hasNotifiedBottomTypingFinished = false
             return@LaunchedEffect
         }
+
+        if (isPaused) return@LaunchedEffect
 
         if (!isRecordTypingFinished) {
             bottomTextVisibleCharacterCount = 0
+            hasNotifiedBottomTypingFinished = false
             return@LaunchedEffect
         }
 
-        typeRecordText(bottomText) { visibleCharacterCount ->
-            bottomTextVisibleCharacterCount = visibleCharacterCount
+        var isBottomTypingAnimationRunning = bottomTextVisibleCharacterCount < bottomText.length
+
+        if (isBottomTypingAnimationRunning) {
+            currentOnRecordTypingAnimationStarted()
         }
+
+        try {
+            typeRecordTextFrom(
+                text = bottomText,
+                startVisibleCharacterCount = bottomTextVisibleCharacterCount
+            ) { visibleCharacterCount -> bottomTextVisibleCharacterCount = visibleCharacterCount }
+
+            if (isBottomTypingAnimationRunning) {
+                isBottomTypingAnimationRunning = false
+                currentOnRecordTypingAnimationFinished()
+            }
+        } finally {
+            if (isBottomTypingAnimationRunning) {
+                currentOnRecordTypingAnimationFinished()
+            }
+        }
+
+        if (hasNotifiedBottomTypingFinished) return@LaunchedEffect
+
         delay(RECORD_AFTER_TYPING_DELAY_MILLIS)
+        hasNotifiedBottomTypingFinished = true
         currentOnRecordTypingFinished()
+    }
+
+    LaunchedEffect(recordTypingProgressKey, startTyping, isPaused) {
+        if (!startTyping || isPaused || recordTypingProgressKey <= 0) return@LaunchedEffect
+
+        delay(RECORD_DETAIL_AUTO_SCROLL_LAYOUT_DELAY_MILLIS)
+        if (listState.canScrollForward) {
+            listState.scrollBy(RECORD_DETAIL_AUTO_SCROLL_STEP_PX)
+        }
     }
 
     Box(
@@ -91,6 +143,7 @@ fun ChatRecordDetailScreen(
             .background(Color.Black)
     ) {
         LazyColumn(
+            state = listState,
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(28.dp),
             contentPadding = PaddingValues(top = 29.dp, bottom = 126.dp),
@@ -113,6 +166,12 @@ fun ChatRecordDetailScreen(
                     dateText = content.dateText,
                     bodyText = content.bodyText,
                     startTyping = startTyping,
+                    isPaused = isPaused,
+                    onTypingProgress = {
+                        recordTypingProgressKey += 1
+                    },
+                    onTypingAnimationStarted = currentOnRecordTypingAnimationStarted,
+                    onTypingAnimationFinished = currentOnRecordTypingAnimationFinished,
                     onTypingFinished = {
                         if (content.bottomText == null) {
                             currentOnRecordTypingFinished()
@@ -147,11 +206,19 @@ fun ChatRecordDetailTransition(
     content: ChatRecordDetailContent?,
     onRecordTypingFinished: () -> Unit,
     modifier: Modifier = Modifier,
+    isPaused: Boolean = false,
+    onRecordScreenShown: (ChatRecordDetailContent) -> Unit = {},
+    onRecordTypingAnimationStarted: () -> Unit = {},
+    onRecordTypingAnimationFinished: () -> Unit = {},
     beforeRecordContent: @Composable () -> Unit
 ) {
     val currentOnRecordTypingFinished by rememberUpdatedState(onRecordTypingFinished)
+    val currentOnRecordScreenShown by rememberUpdatedState(onRecordScreenShown)
+    val currentOnRecordTypingAnimationStarted by rememberUpdatedState(onRecordTypingAnimationStarted)
+    val currentOnRecordTypingAnimationFinished by rememberUpdatedState(onRecordTypingAnimationFinished)
     var retainedContent by remember { mutableStateOf<ChatRecordDetailContent?>(null) }
     var transitionPhase by remember { mutableStateOf(RecordDetailTransitionPhase.BeforeRecord) }
+    var hasNotifiedRecordScreenShown by remember { mutableStateOf(false) }
     val beforeRecordAlpha by animateFloatAsState(
         targetValue = if (transitionPhase == RecordDetailTransitionPhase.BeforeRecord) 1f else 0f,
         animationSpec = tween(durationMillis = RECORD_DETAIL_TRANSITION_DURATION_MILLIS),
@@ -173,17 +240,48 @@ fun ChatRecordDetailTransition(
         if (content == null) {
             retainedContent = null
             transitionPhase = RecordDetailTransitionPhase.BeforeRecord
+            hasNotifiedRecordScreenShown = false
             return@LaunchedEffect
         }
 
         retainedContent = content
         transitionPhase = RecordDetailTransitionPhase.BeforeRecord
-        delay(RECORD_DETAIL_BEFORE_FADE_DELAY_MILLIS.toLong())
-        transitionPhase = RecordDetailTransitionPhase.FadingOutBeforeRecord
-        delay(RECORD_DETAIL_TRANSITION_DURATION_MILLIS.toLong())
-        transitionPhase = RecordDetailTransitionPhase.FadingInRecord
-        delay(RECORD_DETAIL_TRANSITION_DURATION_MILLIS.toLong())
-        transitionPhase = RecordDetailTransitionPhase.RecordVisible
+        hasNotifiedRecordScreenShown = false
+    }
+
+    LaunchedEffect(retainedContent, transitionPhase, isPaused) {
+        if (retainedContent == null || isPaused) return@LaunchedEffect
+
+        when (transitionPhase) {
+            RecordDetailTransitionPhase.BeforeRecord -> {
+                delay(RECORD_DETAIL_BEFORE_FADE_DELAY_MILLIS.toLong())
+                transitionPhase = RecordDetailTransitionPhase.FadingOutBeforeRecord
+            }
+
+            RecordDetailTransitionPhase.FadingOutBeforeRecord -> {
+                delay(RECORD_DETAIL_TRANSITION_DURATION_MILLIS.toLong())
+                transitionPhase = RecordDetailTransitionPhase.FadingInRecord
+            }
+
+            RecordDetailTransitionPhase.FadingInRecord -> {
+                delay(RECORD_DETAIL_TRANSITION_DURATION_MILLIS.toLong())
+                transitionPhase = RecordDetailTransitionPhase.RecordVisible
+            }
+
+            RecordDetailTransitionPhase.RecordVisible -> Unit
+        }
+    }
+
+    LaunchedEffect(retainedContent, transitionPhase, hasNotifiedRecordScreenShown) {
+        val recordContent = retainedContent ?: return@LaunchedEffect
+
+        if (
+            transitionPhase == RecordDetailTransitionPhase.RecordVisible &&
+            !hasNotifiedRecordScreenShown
+        ) {
+            hasNotifiedRecordScreenShown = true
+            currentOnRecordScreenShown(recordContent)
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -208,7 +306,10 @@ fun ChatRecordDetailTransition(
                 ChatRecordDetailScreen(
                     content = recordContent,
                     startTyping = transitionPhase == RecordDetailTransitionPhase.RecordVisible,
+                    isPaused = isPaused,
                     onRecordTypingFinished = currentOnRecordTypingFinished,
+                    onRecordTypingAnimationStarted = currentOnRecordTypingAnimationStarted,
+                    onRecordTypingAnimationFinished = currentOnRecordTypingAnimationFinished,
                     modifier = Modifier
                         .fillMaxSize()
                         .alpha(recordAlpha)

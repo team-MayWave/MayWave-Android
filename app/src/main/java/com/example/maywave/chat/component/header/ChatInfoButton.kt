@@ -32,6 +32,26 @@ fun ChatInfoButton(
     showUnreadDot: Boolean = false,
     onRead: () -> Unit = {}
 ) {
+    val density = LocalDensity.current
+    val transition = rememberInfiniteTransition(label = "ChatInfoButtonTransition")
+    val offsetY by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = UNREAD_DOT_SHAKE_INTERVAL_MILLIS
+                0f at 0 using LinearEasing
+                -UNREAD_DOT_SHAKE_OFFSET_DP at 90 using LinearEasing
+                UNREAD_DOT_SHAKE_OFFSET_DP at 180 using LinearEasing
+                -UNREAD_DOT_SHAKE_OFFSET_DP at 270 using LinearEasing
+                0f at UNREAD_DOT_SHAKE_DURATION_MILLIS using LinearEasing
+                0f at UNREAD_DOT_SHAKE_INTERVAL_MILLIS using LinearEasing
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ChatInfoButtonOffsetY"
+    )
+
     Box(
         modifier = modifier
             .size(24.dp)
@@ -43,15 +63,28 @@ fun ChatInfoButton(
                 }
             )
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.chat_info_button),
-            contentDescription = "채팅 정보",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.size(24.dp)
-        )
+        val animatedModifier = if (showUnreadDot) {
+            Modifier.offset {
+                IntOffset(
+                    x = 0,
+                    y = with(density) { offsetY.dp.roundToPx() }
+                )
+            }
+        } else {
+            Modifier
+        }
 
-        if (showUnreadDot) {
-            ChatInfoUnreadDot(modifier = Modifier.align(Alignment.BottomEnd))
+        Box(modifier = animatedModifier.size(24.dp)) {
+            Image(
+                painter = painterResource(id = R.drawable.chat_info_button),
+                contentDescription = "채팅 정보",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(24.dp)
+            )
+
+            if (showUnreadDot) {
+                ChatInfoUnreadDot(modifier = Modifier.align(Alignment.BottomEnd))
+            }
         }
     }
 }
@@ -60,37 +93,11 @@ fun ChatInfoButton(
 private fun ChatInfoUnreadDot(
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
-    val transition = rememberInfiniteTransition(label = "ChatInfoUnreadDotTransition")
-    val offsetY by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = UNREAD_DOT_SHAKE_DURATION_MILLIS
-                0f at 0 using LinearEasing
-                -UNREAD_DOT_SHAKE_OFFSET_DP at 90 using LinearEasing
-                UNREAD_DOT_SHAKE_OFFSET_DP at 180 using LinearEasing
-                -UNREAD_DOT_SHAKE_OFFSET_DP at 270 using LinearEasing
-                0f at UNREAD_DOT_SHAKE_DURATION_MILLIS using LinearEasing
-            },
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "ChatInfoUnreadDotOffsetY"
-    )
-
     Image(
         painter = painterResource(id = R.drawable.chat_info_unread_dot),
         contentDescription = null,
         contentScale = ContentScale.Fit,
-        modifier = modifier
-            .offset {
-                IntOffset(
-                    x = 0,
-                    y = with(density) { offsetY.dp.roundToPx() }
-                )
-            }
-            .size(8.dp)
+        modifier = modifier.size(8.dp)
     )
 }
 
@@ -106,4 +113,5 @@ private fun ChatInfoButtonPreview() {
 }
 
 private const val UNREAD_DOT_SHAKE_DURATION_MILLIS = 360
+private const val UNREAD_DOT_SHAKE_INTERVAL_MILLIS = 2_000
 private const val UNREAD_DOT_SHAKE_OFFSET_DP = 2f

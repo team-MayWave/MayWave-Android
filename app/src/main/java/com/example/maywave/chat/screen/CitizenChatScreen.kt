@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,13 +62,17 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 private const val CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
 private const val SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS = 4_000
 private const val INITIAL_CHAT_ELEMENT_COUNT = 8
+private const val INTRO_SOUND_STOP_ITEM_COUNT = INITIAL_CHAT_ELEMENT_COUNT
 private const val CLOSE_BRANCH_ELEMENT_COUNT = 10
+private const val CLOSE_BRANCH_RADIO_START_ITEM_COUNT = 3
+private const val CLOSE_BRANCH_RADIO_STOP_ITEM_COUNT = 10
 private const val HELP_FALLEN_ELEMENT_COUNT = 8
 private const val AVOID_SITUATION_ELEMENT_COUNT = 10
 private const val DISTANCE_BRANCH_ELEMENT_COUNT = 10
+private const val HELP_FALLEN_SCENE_SOUND_START_ITEM_COUNT = 2
 private const val HELP_FALLEN_RECORD_ITEM_INDEX = 6
-private const val AVOID_SITUATION_RECORD_ITEM_INDEX = 9
-private const val DISTANCE_RECORD_ITEM_INDEX = 8
+private const val AVOID_SITUATION_RECORD_ITEM_INDEX = 8
+private const val DISTANCE_RECORD_ITEM_INDEX = 7
 private const val AUTO_SCROLL_LAYOUT_DELAY_MILLIS = 100
 private const val AUTO_SCROLL_ANIMATION_DURATION_MILLIS = 650
 private const val CHAT_ITEM_REVEAL_DELAY_MILLIS = 0
@@ -86,7 +91,19 @@ fun CitizenChatScreen(
     onInfoClick: () -> Unit = {},
     showInfoUnreadDot: Boolean = true,
     onInfoRead: () -> Unit = {},
-    onInfoUnreadStateShown: (String) -> Unit = {}
+    onInfoUnreadStateShown: (String) -> Unit = {},
+    isChatPaused: Boolean = false,
+    onIntroSceneFinished: () -> Unit = {},
+    onChoiceClickSound: () -> Unit = {},
+    onPlayBranchRadio: () -> Unit = {},
+    onStopBranchRadio: () -> Unit = {},
+    onPlayHelpFallenSceneSound: () -> Unit = {},
+    onStopHelpFallenSceneSound: () -> Unit = {},
+    onPlayAirborneCrackdownSceneSound: () -> Unit = {},
+    onFadeOutAirborneCrackdownSceneSound: () -> Unit = {},
+    onStopAirborneCrackdownSceneSound: () -> Unit = {},
+    onPlayRecordTypingSound: () -> Unit = {},
+    onStopRecordTypingSound: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val chatGameViewModel: ChatGameViewModel = viewModel(
@@ -100,7 +117,22 @@ fun CitizenChatScreen(
     var isHelpFallenRecordTransitionFinished by rememberSaveable { mutableStateOf(false) }
     var isAvoidSituationRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
     var isDistanceRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
+    var hasNotifiedIntroSceneFinished by rememberSaveable { mutableStateOf(false) }
+    var isBranchRadioPlaying by rememberSaveable { mutableStateOf(false) }
+    var isHelpFallenSceneSoundPlaying by remember { mutableStateOf(false) }
+    var isDistanceBranchSceneSoundPlaying by remember { mutableStateOf(false) }
     val shouldFollowNewContent = rememberShouldFollowNewContent(listState = listState)
+    val isRevealPaused = isChatPaused || !shouldFollowNewContent
+    val currentOnIntroSceneFinished by rememberUpdatedState(onIntroSceneFinished)
+    val currentOnPlayBranchRadio by rememberUpdatedState(onPlayBranchRadio)
+    val currentOnStopBranchRadio by rememberUpdatedState(onStopBranchRadio)
+    val currentOnPlayHelpFallenSceneSound by rememberUpdatedState(onPlayHelpFallenSceneSound)
+    val currentOnStopHelpFallenSceneSound by rememberUpdatedState(onStopHelpFallenSceneSound)
+    val currentOnPlayAirborneCrackdownSceneSound by rememberUpdatedState(onPlayAirborneCrackdownSceneSound)
+    val currentOnFadeOutAirborneCrackdownSceneSound by rememberUpdatedState(onFadeOutAirborneCrackdownSceneSound)
+    val currentOnStopAirborneCrackdownSceneSound by rememberUpdatedState(onStopAirborneCrackdownSceneSound)
+    val currentOnPlayRecordTypingSound by rememberUpdatedState(onPlayRecordTypingSound)
+    val currentOnStopRecordTypingSound by rememberUpdatedState(onStopRecordTypingSound)
     val closeItemCount = if (chatGameUiState.hasErrorFor(CitizenCloseRequest)) {
         1
     } else {
@@ -123,14 +155,16 @@ fun CitizenChatScreen(
     }
     val revealedInitialItemCount = rememberSequentialRevealCount(
         itemCount = INITIAL_CHAT_ELEMENT_COUNT,
-        initiallyVisibleItemCount = 1
+        initiallyVisibleItemCount = 1,
+        isPaused = isRevealPaused
     )
     val revealedCloseItemCount = rememberSequentialRevealCount(
         itemCount = closeItemCount,
         revealKey = branchRevealKey,
         enabled = selectedBranch == CitizenChatBranch.Close &&
             chatGameUiState.isResultReadyFor(CitizenCloseRequest),
-        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedDistanceItemCount = rememberSequentialRevealCount(
         itemCount = distanceItemCount,
@@ -139,7 +173,8 @@ fun CitizenChatScreen(
             chatGameUiState.isResultReadyFor(CitizenDistanceRequest),
         blockedAfterItemIndex = DISTANCE_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isDistanceRecordTypingFinished,
-        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedHelpFallenItemCount = rememberSequentialRevealCount(
         itemCount = helpFallenItemCount,
@@ -148,7 +183,8 @@ fun CitizenChatScreen(
             chatGameUiState.isResultReadyFor(CitizenHelpFallenRequest),
         blockedAfterItemIndex = HELP_FALLEN_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isHelpFallenRecordTransitionFinished,
-        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedAvoidSituationItemCount = rememberSequentialRevealCount(
         itemCount = avoidSituationItemCount,
@@ -157,7 +193,8 @@ fun CitizenChatScreen(
             chatGameUiState.isResultReadyFor(CitizenAvoidSituationRequest),
         blockedAfterItemIndex = AVOID_SITUATION_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isAvoidSituationRecordTypingFinished,
-        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val finalSequenceKey = when {
         selectedCloseBranch == CitizenCloseBranch.HelpFallen &&
@@ -191,6 +228,90 @@ fun CitizenChatScreen(
 
     LaunchedEffect(infoUnreadStateKey) {
         infoUnreadStateKey?.let(onInfoUnreadStateShown)
+    }
+
+    LaunchedEffect(revealedInitialItemCount, isRevealPaused, hasNotifiedIntroSceneFinished) {
+        if (
+            !hasNotifiedIntroSceneFinished &&
+            !isRevealPaused &&
+            revealedInitialItemCount >= INTRO_SOUND_STOP_ITEM_COUNT
+        ) {
+            delay(CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
+            hasNotifiedIntroSceneFinished = true
+            currentOnIntroSceneFinished()
+        }
+    }
+
+    LaunchedEffect(selectedBranch, revealedCloseItemCount, isRevealPaused, isBranchRadioPlaying) {
+        val shouldPlayBranchRadio = selectedBranch == CitizenChatBranch.Close &&
+            !isRevealPaused &&
+            revealedCloseItemCount in CLOSE_BRANCH_RADIO_START_ITEM_COUNT until CLOSE_BRANCH_RADIO_STOP_ITEM_COUNT
+
+        if (shouldPlayBranchRadio && !isBranchRadioPlaying) {
+            currentOnPlayBranchRadio()
+            isBranchRadioPlaying = true
+        } else if (!shouldPlayBranchRadio && isBranchRadioPlaying) {
+            currentOnStopBranchRadio()
+            isBranchRadioPlaying = false
+        }
+    }
+
+    LaunchedEffect(
+        selectedCloseBranch,
+        revealedHelpFallenItemCount,
+        isRevealPaused,
+        isHelpFallenSceneSoundPlaying
+    ) {
+        val shouldPlayHelpFallenSceneSound = selectedCloseBranch == CitizenCloseBranch.HelpFallen &&
+            !isRevealPaused &&
+            revealedHelpFallenItemCount in HELP_FALLEN_SCENE_SOUND_START_ITEM_COUNT until HELP_FALLEN_RECORD_ITEM_INDEX
+
+        if (shouldPlayHelpFallenSceneSound && !isHelpFallenSceneSoundPlaying) {
+            currentOnPlayHelpFallenSceneSound()
+            isHelpFallenSceneSoundPlaying = true
+        } else if (!shouldPlayHelpFallenSceneSound && isHelpFallenSceneSoundPlaying) {
+            currentOnStopHelpFallenSceneSound()
+            isHelpFallenSceneSoundPlaying = false
+        }
+    }
+
+    LaunchedEffect(
+        selectedBranch,
+        revealedDistanceItemCount,
+        isRevealPaused,
+        isDistanceBranchSceneSoundPlaying
+    ) {
+        val shouldPlayDistanceBranchSceneSound = selectedBranch == CitizenChatBranch.Distance &&
+            !isRevealPaused &&
+            revealedDistanceItemCount < DISTANCE_RECORD_ITEM_INDEX
+
+        when {
+            shouldPlayDistanceBranchSceneSound && !isDistanceBranchSceneSoundPlaying -> {
+                currentOnPlayAirborneCrackdownSceneSound()
+                isDistanceBranchSceneSoundPlaying = true
+            }
+
+            !shouldPlayDistanceBranchSceneSound && isDistanceBranchSceneSoundPlaying &&
+                selectedBranch == CitizenChatBranch.Distance &&
+                revealedDistanceItemCount >= DISTANCE_RECORD_ITEM_INDEX -> {
+                currentOnFadeOutAirborneCrackdownSceneSound()
+                isDistanceBranchSceneSoundPlaying = false
+            }
+
+            !shouldPlayDistanceBranchSceneSound && isDistanceBranchSceneSoundPlaying -> {
+                currentOnStopAirborneCrackdownSceneSound()
+                isDistanceBranchSceneSoundPlaying = false
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnStopBranchRadio()
+            currentOnStopHelpFallenSceneSound()
+            currentOnStopAirborneCrackdownSceneSound()
+            currentOnStopRecordTypingSound()
+        }
     }
 
     AutoScrollOnReveal(
@@ -258,7 +379,10 @@ fun CitizenChatScreen(
                     }
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            isPaused = isRevealPaused,
+            onRecordTypingAnimationStarted = currentOnPlayRecordTypingSound,
+            onRecordTypingAnimationFinished = currentOnStopRecordTypingSound
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -348,7 +472,8 @@ fun CitizenChatScreen(
                                     CitizenChatBranch.Close -> 0
                                     CitizenChatBranch.Distance -> 1
                                     null -> null
-                                }
+                                },
+                                onChoiceClickSound = onChoiceClickSound
                             )
                         }
                     }
@@ -374,7 +499,8 @@ fun CitizenChatScreen(
                                             selectedCloseBranch = CitizenCloseBranch.AvoidSituation
                                             closeBranchRevealKey += 1
                                             chatGameViewModel.submitChoice(CitizenAvoidSituationRequest)
-                                        }
+                                        },
+                                        onChoiceClickSound = onChoiceClickSound
                                     )
                                 }
                             }
@@ -460,7 +586,8 @@ private fun rememberSequentialRevealCount(
     enabled: Boolean = true,
     blockedAfterItemIndex: Int? = null,
     canRevealAfterBlockedItem: Boolean = true,
-    firstItemNextRevealDelayMillis: Int = CHAT_ELEMENT_REVEAL_DURATION_MILLIS
+    firstItemNextRevealDelayMillis: Int = CHAT_ELEMENT_REVEAL_DURATION_MILLIS,
+    isPaused: Boolean = false
 ): Int {
     val initialItemCount = initiallyVisibleItemCount.coerceIn(0, itemCount)
     val blockedItemIndex = blockedAfterItemIndex?.coerceIn(0, itemCount)
@@ -475,12 +602,15 @@ private fun rememberSequentialRevealCount(
         enabled,
         blockedItemIndex,
         canRevealAfterBlockedItem,
-        firstItemNextRevealDelayMillis
+        firstItemNextRevealDelayMillis,
+        isPaused
     ) {
         if (!enabled) {
             revealedItemCount = 0
             return@LaunchedEffect
         }
+
+        if (isPaused) return@LaunchedEffect
 
         revealedItemCount = revealedItemCount.coerceAtLeast(initialItemCount)
 
@@ -616,6 +746,7 @@ private fun CloseBranchContent(
     revealedAvoidSituationItemCount: Int,
     onHelpFallenClick: () -> Unit,
     onAvoidSituationClick: () -> Unit,
+    onChoiceClickSound: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -680,7 +811,8 @@ private fun CloseBranchContent(
                     CitizenCloseBranch.HelpFallen -> 0
                     CitizenCloseBranch.AvoidSituation -> 1
                     null -> null
-                }
+                },
+                onChoiceClickSound = onChoiceClickSound
             )
         }
 
@@ -773,8 +905,6 @@ private fun AvoidSituationContent(
     revealedItemCount: Int,
     modifier: Modifier = Modifier
 ) {
-    val isCompletionTextVisible = revealedItemCount >= AVOID_SITUATION_RECORD_ITEM_INDEX
-
     Column(
         verticalArrangement = Arrangement.spacedBy(BRANCH_CHAT_ELEMENT_SPACING),
         modifier = modifier.fillMaxWidth()
@@ -820,20 +950,6 @@ private fun AvoidSituationContent(
         AnimatedChatItem(visible = revealedItemCount >= 7) {
             ChatNarrationText(text = "당신은 그 자리에 서서 상황을 바라보고 있습니다.")
         }
-
-        AnimatedChatItem(visible = revealedItemCount >= 8) {
-            ChatSceneImage(
-                imageResId = R.drawable.citizen_intro_record,
-                contentDescription = "금남로의 계엄군",
-                height = 218.dp
-            )
-        }
-
-        AnimatedChatItem(visible = isCompletionTextVisible) {
-            ChatNarrationText(
-                text = "계엄군의 진압이 계속되자 더 많은 시민들이 금남로로 모여들기 시작했습니다.\n당신은 그날의 광주를 바라보고 있었습니다."
-            )
-        }
     }
 }
 
@@ -878,16 +994,6 @@ private fun DistanceBranchContent(
         AnimatedChatItem(visible = revealedItemCount >= 6) {
             ChatNarrationText(text = "당신은 그 자리에 서서, 그저 상황을 바라보고 있습니다.")
         }
-
-        AnimatedChatItem(visible = revealedItemCount >= 7) {
-            ChatSceneImage(
-                imageResId = R.drawable.citizen_distance_record,
-                contentDescription = "멀리서 지켜보는 시위 현장",
-                height = 455.dp,
-                contentScale = ContentScale.Fit
-            )
-        }
-
     }
 }
 
@@ -917,7 +1023,7 @@ private fun citizenActiveRecordDetailContent(
                 imageHeight = 226.dp,
                 imageContentScale = ContentScale.Fit,
                 bodyText = "사진 속 인물은 훗날 시민군 상황실장을\n맡게 되는 박남선의 동생, 박남규입니다.\n당시 금남로 일대에서는 공수부대의 강경 진압이 이어지고 있었으며,\n박남규는 가톨릭센터 인근에서 공수부대원에게 폭행당했습니다.\n이러한 진압 장면들은 시민들에게 빠르게 알려졌고,\n분노한 시민들이 거리로 모여들기 시작했습니다.\n이후 시위는 학생 중심에서\n시민 전체로 확산되며 광주 전역으로 퍼져나갔습니다.",
-                bottomText = "당신은 그 시작을 목격습니다."
+                bottomText = "당신은 그 시작을 목격합니다."
             )
         }
 
@@ -939,10 +1045,10 @@ private fun citizenActiveRecordDetailContent(
                 imageResId = R.drawable.citizen_distance_record,
                 imageContentDescription = "멀리서 지켜보는 시위 현장",
                 dateText = "1980년 5월 18일",
-                imageHeight = 455.dp,
+                imageHeight = 415.dp,
                 imageContentScale = ContentScale.Fit,
                 bodyText = "계엄군의 강경 진압이 이어지면서 광주 시내에는\n더 많은 시민들이 모여들기 시작했습니다.\n당시 시민군과 대변인을 맡게 되는 윤상원 역시 시민들과\n함께 광주의 상황을 알리며 민주화를 요구하고 있었습니다.\n시민들의 증언과 현장의 소식은 빠르게 퍼져나갔고,\n학생 중심이던 시위는 시민 전체의 저항으로 확산되었습니다.\n당신은 그날의 광주를 지켜본 시민 중 한 사람이었습니다.",
-                bottomText = "당신은 그 시작을 목격습니다."
+                bottomText = "당신은 그 시작을 목격합니다."
             )
         }
 

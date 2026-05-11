@@ -18,9 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,7 +56,9 @@ data class ChatInfoOverlayContent(
     val history: ChatInfoHistory,
     val imageHeight: Dp = 214.dp,
     val imageWidthFraction: Float = 1f,
-    val imageContentScale: ContentScale = ContentScale.Crop
+    val imageContentScale: ContentScale = ContentScale.Crop,
+    val descriptionToImageSpacing: Dp = 10.dp,
+    val imageToHistorySpacing: Dp = 10.dp
 )
 
 data class ChatInfoHistory(
@@ -115,8 +115,7 @@ private fun ChatInfoOverlayCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 20.dp, top = 31.dp, end = 20.dp, bottom = 29.dp)
+                    .padding(start = 20.dp, top = 31.dp, end = 20.dp, bottom = 20.dp)
             ) {
                 ChatInfoTitle(text = content.title)
 
@@ -124,7 +123,7 @@ private fun ChatInfoOverlayCard(
 
                 ChatInfoDescription(text = content.description)
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(content.descriptionToImageSpacing))
 
                 ChatInfoMainImage(
                     imageResId = content.imageResId,
@@ -134,7 +133,7 @@ private fun ChatInfoOverlayCard(
                     contentScale = content.imageContentScale
                 )
 
-                Spacer(modifier = Modifier.height(36.dp))
+                Spacer(modifier = Modifier.height(content.imageToHistorySpacing))
 
                 ChatInfoHistoryBox(history = content.history)
             }
@@ -253,7 +252,7 @@ private fun ChatInfoHistoryBox(
                 color = Color.White.copy(alpha = 0.18f),
                 shape = shape
             )
-            .padding(start = 16.dp, top = 15.dp, end = 14.dp, bottom = 8.dp)
+            .padding(start = 11.dp, top = 15.dp, end = 11.dp, bottom = 8.dp)
     ) {
         ChatInfoHistoryTitle()
 

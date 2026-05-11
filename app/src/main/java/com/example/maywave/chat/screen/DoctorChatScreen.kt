@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,13 +62,19 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 private const val DOCTOR_CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
 private const val DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS = 4_000
 private const val DOCTOR_INITIAL_ELEMENT_COUNT = 8
+private const val DOCTOR_INTRO_SOUND_STOP_ITEM_COUNT = DOCTOR_INITIAL_ELEMENT_COUNT
+private const val DOCTOR_RUN_TO_PATIENT_SOUND_STOP_ITEM_COUNT = 3
+private const val DOCTOR_CROWD_CRYING_SOUND_START_ITEM_COUNT = 4
+private const val DOCTOR_CROWD_CRYING_SOUND_FADE_OUT_ITEM_COUNT = 13
+private const val DOCTOR_HEARTBEAT_SOUND_START_ITEM_COUNT = 3
+private const val DOCTOR_HEARTBEAT_SOUND_FADE_OUT_ITEM_COUNT = 11
 private const val DOCTOR_RUN_TO_PATIENT_ELEMENT_COUNT = 17
 private const val DOCTOR_PREPARE_HOSPITAL_ELEMENT_COUNT = 17
 private const val DOCTOR_FOCUS_PATIENT_ELEMENT_COUNT = 15
 private const val DOCTOR_CHECK_PATIENTS_ELEMENT_COUNT = 14
 private const val DOCTOR_REQUEST_TRANSFER_ELEMENT_COUNT = 21
-private const val DOCTOR_FOCUS_PATIENT_RECORD_ITEM_INDEX = 14
-private const val DOCTOR_CHECK_PATIENTS_RECORD_ITEM_INDEX = 13
+private const val DOCTOR_FOCUS_PATIENT_RECORD_ITEM_INDEX = 13
+private const val DOCTOR_CHECK_PATIENTS_RECORD_ITEM_INDEX = 12
 private const val DOCTOR_PREPARE_HOSPITAL_RECORD_ITEM_INDEX = 16
 private const val DOCTOR_REQUEST_TRANSFER_RECORD_ITEM_INDEX = 20
 private const val DOCTOR_AUTO_SCROLL_LAYOUT_DELAY_MILLIS = 100
@@ -89,7 +96,20 @@ fun DoctorChatScreen(
     onInfoClick: () -> Unit = {},
     showInfoUnreadDot: Boolean = true,
     onInfoRead: () -> Unit = {},
-    onInfoUnreadStateShown: (String) -> Unit = {}
+    onInfoUnreadStateShown: (String) -> Unit = {},
+    isChatPaused: Boolean = false,
+    onIntroSceneFinished: () -> Unit = {},
+    onChoiceClickSound: () -> Unit = {},
+    onPlayRunToPatientSound: () -> Unit = {},
+    onStopRunToPatientSound: () -> Unit = {},
+    onPlayCrowdCryingSound: () -> Unit = {},
+    onFadeOutCrowdCryingSound: () -> Unit = {},
+    onStopCrowdCryingSound: () -> Unit = {},
+    onPlayHeartbeatSound: () -> Unit = {},
+    onFadeOutHeartbeatSound: () -> Unit = {},
+    onStopHeartbeatSound: () -> Unit = {},
+    onPlayRecordTypingSound: () -> Unit = {},
+    onStopRecordTypingSound: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val chatGameViewModel: ChatGameViewModel = viewModel(
@@ -104,7 +124,25 @@ fun DoctorChatScreen(
     var isFocusPatientRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
     var isCheckPatientsRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
     var isRequestTransferRecordTypingFinished by rememberSaveable { mutableStateOf(false) }
+    var hasNotifiedIntroSceneFinished by rememberSaveable { mutableStateOf(false) }
+    var isRunToPatientSoundPlaying by remember { mutableStateOf(false) }
+    var isCrowdCryingSoundPlaying by remember { mutableStateOf(false) }
+    var hasStartedCrowdCryingFadeOut by rememberSaveable { mutableStateOf(false) }
+    var isHeartbeatSoundPlaying by remember { mutableStateOf(false) }
+    var hasStartedHeartbeatFadeOut by rememberSaveable { mutableStateOf(false) }
     val shouldFollowNewContent = rememberDoctorShouldFollowNewContent(listState = listState)
+    val isRevealPaused = isChatPaused || !shouldFollowNewContent
+    val currentOnIntroSceneFinished by rememberUpdatedState(onIntroSceneFinished)
+    val currentOnPlayRunToPatientSound by rememberUpdatedState(onPlayRunToPatientSound)
+    val currentOnStopRunToPatientSound by rememberUpdatedState(onStopRunToPatientSound)
+    val currentOnPlayCrowdCryingSound by rememberUpdatedState(onPlayCrowdCryingSound)
+    val currentOnFadeOutCrowdCryingSound by rememberUpdatedState(onFadeOutCrowdCryingSound)
+    val currentOnStopCrowdCryingSound by rememberUpdatedState(onStopCrowdCryingSound)
+    val currentOnPlayHeartbeatSound by rememberUpdatedState(onPlayHeartbeatSound)
+    val currentOnFadeOutHeartbeatSound by rememberUpdatedState(onFadeOutHeartbeatSound)
+    val currentOnStopHeartbeatSound by rememberUpdatedState(onStopHeartbeatSound)
+    val currentOnPlayRecordTypingSound by rememberUpdatedState(onPlayRecordTypingSound)
+    val currentOnStopRecordTypingSound by rememberUpdatedState(onStopRecordTypingSound)
     val runToPatientItemCount = if (chatGameUiState.hasErrorFor(DoctorRunToPatientRequest)) {
         1
     } else {
@@ -132,14 +170,16 @@ fun DoctorChatScreen(
     }
     val revealedInitialItemCount = rememberDoctorSequentialRevealCount(
         itemCount = DOCTOR_INITIAL_ELEMENT_COUNT,
-        initiallyVisibleItemCount = 1
+        initiallyVisibleItemCount = 1,
+        isPaused = isRevealPaused
     )
     val revealedRunToPatientItemCount = rememberDoctorSequentialRevealCount(
         itemCount = runToPatientItemCount,
         revealKey = openingRevealKey,
         enabled = selectedOpeningBranch == DoctorOpeningBranch.RunToPatient &&
             chatGameUiState.isResultReadyFor(DoctorRunToPatientRequest),
-        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedPrepareHospitalItemCount = rememberDoctorSequentialRevealCount(
         itemCount = prepareHospitalItemCount,
@@ -148,7 +188,8 @@ fun DoctorChatScreen(
             chatGameUiState.isResultReadyFor(DoctorPrepareHospitalRequest),
         blockedAfterItemIndex = DOCTOR_PREPARE_HOSPITAL_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isPrepareHospitalRecordTypingFinished,
-        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedFocusPatientItemCount = rememberDoctorSequentialRevealCount(
         itemCount = focusPatientItemCount,
@@ -157,7 +198,8 @@ fun DoctorChatScreen(
             chatGameUiState.isResultReadyFor(DoctorFocusPatientRequest),
         blockedAfterItemIndex = DOCTOR_FOCUS_PATIENT_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isFocusPatientRecordTypingFinished,
-        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedCheckPatientsItemCount = rememberDoctorSequentialRevealCount(
         itemCount = checkPatientsItemCount,
@@ -166,7 +208,8 @@ fun DoctorChatScreen(
             chatGameUiState.isResultReadyFor(DoctorCheckPatientsRequest),
         blockedAfterItemIndex = DOCTOR_CHECK_PATIENTS_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isCheckPatientsRecordTypingFinished,
-        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val revealedRequestTransferItemCount = rememberDoctorSequentialRevealCount(
         itemCount = requestTransferItemCount,
@@ -175,7 +218,8 @@ fun DoctorChatScreen(
             chatGameUiState.isResultReadyFor(DoctorRequestTransferRequest),
         blockedAfterItemIndex = DOCTOR_REQUEST_TRANSFER_RECORD_ITEM_INDEX,
         canRevealAfterBlockedItem = isRequestTransferRecordTypingFinished,
-        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
+        firstItemNextRevealDelayMillis = DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS,
+        isPaused = isRevealPaused
     )
     val finalSequenceKey = when {
         selectedTriageBranch == DoctorTriageBranch.FocusPatient &&
@@ -195,12 +239,6 @@ fun DoctorChatScreen(
     val infoUnreadStateKey = doctorInfoUnreadStateKey(
         selectedOpeningBranch = selectedOpeningBranch,
         selectedTriageBranch = selectedTriageBranch,
-        revealedInitialItemCount = revealedInitialItemCount,
-        revealedRunToPatientItemCount = revealedRunToPatientItemCount,
-        revealedPrepareHospitalItemCount = revealedPrepareHospitalItemCount,
-        revealedFocusPatientItemCount = revealedFocusPatientItemCount,
-        revealedCheckPatientsItemCount = revealedCheckPatientsItemCount,
-        revealedRequestTransferItemCount = revealedRequestTransferItemCount,
         finalSequenceKey = finalSequenceKey
     )
     val activeRecordDetailContent = doctorActiveRecordDetailContent(
@@ -211,6 +249,110 @@ fun DoctorChatScreen(
 
     LaunchedEffect(infoUnreadStateKey) {
         infoUnreadStateKey?.let(onInfoUnreadStateShown)
+    }
+
+    LaunchedEffect(revealedInitialItemCount, isRevealPaused, hasNotifiedIntroSceneFinished) {
+        if (
+            !hasNotifiedIntroSceneFinished &&
+            !isRevealPaused &&
+            revealedInitialItemCount >= DOCTOR_INTRO_SOUND_STOP_ITEM_COUNT
+        ) {
+            delay(DOCTOR_CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
+            hasNotifiedIntroSceneFinished = true
+            currentOnIntroSceneFinished()
+        }
+    }
+
+    LaunchedEffect(selectedOpeningBranch, revealedRunToPatientItemCount, isRunToPatientSoundPlaying) {
+        val shouldPlayRunToPatientSound = selectedOpeningBranch == DoctorOpeningBranch.RunToPatient &&
+            revealedRunToPatientItemCount < DOCTOR_RUN_TO_PATIENT_SOUND_STOP_ITEM_COUNT
+
+        if (shouldPlayRunToPatientSound && !isRunToPatientSoundPlaying) {
+            currentOnPlayRunToPatientSound()
+            isRunToPatientSoundPlaying = true
+        } else if (!shouldPlayRunToPatientSound && isRunToPatientSoundPlaying) {
+            currentOnStopRunToPatientSound()
+            isRunToPatientSoundPlaying = false
+        }
+    }
+
+    LaunchedEffect(
+        selectedOpeningBranch,
+        revealedRunToPatientItemCount,
+        isCrowdCryingSoundPlaying,
+        hasStartedCrowdCryingFadeOut
+    ) {
+        val shouldPlayCrowdCryingSound = selectedOpeningBranch == DoctorOpeningBranch.RunToPatient &&
+            revealedRunToPatientItemCount in DOCTOR_CROWD_CRYING_SOUND_START_ITEM_COUNT until
+            DOCTOR_CROWD_CRYING_SOUND_FADE_OUT_ITEM_COUNT
+
+        when {
+            shouldPlayCrowdCryingSound &&
+                !isCrowdCryingSoundPlaying &&
+                !hasStartedCrowdCryingFadeOut -> {
+                currentOnPlayCrowdCryingSound()
+                isCrowdCryingSoundPlaying = true
+            }
+
+            selectedOpeningBranch == DoctorOpeningBranch.RunToPatient &&
+                revealedRunToPatientItemCount >= DOCTOR_CROWD_CRYING_SOUND_FADE_OUT_ITEM_COUNT &&
+                isCrowdCryingSoundPlaying &&
+                !hasStartedCrowdCryingFadeOut -> {
+                currentOnFadeOutCrowdCryingSound()
+                isCrowdCryingSoundPlaying = false
+                hasStartedCrowdCryingFadeOut = true
+            }
+
+            selectedOpeningBranch != DoctorOpeningBranch.RunToPatient && isCrowdCryingSoundPlaying -> {
+                currentOnStopCrowdCryingSound()
+                isCrowdCryingSoundPlaying = false
+                hasStartedCrowdCryingFadeOut = false
+            }
+        }
+    }
+
+    LaunchedEffect(
+        selectedTriageBranch,
+        revealedFocusPatientItemCount,
+        isHeartbeatSoundPlaying,
+        hasStartedHeartbeatFadeOut
+    ) {
+        val shouldPlayHeartbeatSound = selectedTriageBranch == DoctorTriageBranch.FocusPatient &&
+            revealedFocusPatientItemCount in DOCTOR_HEARTBEAT_SOUND_START_ITEM_COUNT until
+            DOCTOR_HEARTBEAT_SOUND_FADE_OUT_ITEM_COUNT
+
+        when {
+            shouldPlayHeartbeatSound &&
+                !isHeartbeatSoundPlaying &&
+                !hasStartedHeartbeatFadeOut -> {
+                currentOnPlayHeartbeatSound()
+                isHeartbeatSoundPlaying = true
+            }
+
+            selectedTriageBranch == DoctorTriageBranch.FocusPatient &&
+                revealedFocusPatientItemCount >= DOCTOR_HEARTBEAT_SOUND_FADE_OUT_ITEM_COUNT &&
+                isHeartbeatSoundPlaying &&
+                !hasStartedHeartbeatFadeOut -> {
+                currentOnFadeOutHeartbeatSound()
+                isHeartbeatSoundPlaying = false
+                hasStartedHeartbeatFadeOut = true
+            }
+
+            selectedTriageBranch != DoctorTriageBranch.FocusPatient && isHeartbeatSoundPlaying -> {
+                currentOnStopHeartbeatSound()
+                isHeartbeatSoundPlaying = false
+                hasStartedHeartbeatFadeOut = false
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnStopRunToPatientSound()
+            currentOnStopCrowdCryingSound()
+            currentOnStopHeartbeatSound()
+            currentOnStopRecordTypingSound()
+        }
     }
 
     AutoScrollOnDoctorReveal(
@@ -286,7 +428,10 @@ fun DoctorChatScreen(
                     null -> Unit
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            isPaused = isRevealPaused,
+            onRecordTypingAnimationStarted = currentOnPlayRecordTypingSound,
+            onRecordTypingAnimationFinished = currentOnStopRecordTypingSound
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -376,7 +521,8 @@ fun DoctorChatScreen(
                                     DoctorOpeningBranch.RunToPatient -> 0
                                     DoctorOpeningBranch.PrepareHospital -> 1
                                     null -> null
-                                }
+                                },
+                                onChoiceClickSound = onChoiceClickSound
                             )
                         }
                     }
@@ -411,7 +557,8 @@ fun DoctorChatScreen(
                                             selectedTriageBranch = DoctorTriageBranch.RequestTransfer
                                             triageRevealKey += 1
                                             chatGameViewModel.submitChoice(DoctorRequestTransferRequest)
-                                        }
+                                        },
+                                        onChoiceClickSound = onChoiceClickSound
                                     )
                                 }
                             }
@@ -510,6 +657,7 @@ private fun RunToPatientContent(
     onFocusPatientClick: () -> Unit,
     onCheckPatientsClick: () -> Unit,
     onRequestTransferClick: () -> Unit,
+    onChoiceClickSound: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -610,7 +758,8 @@ private fun RunToPatientContent(
                     DoctorTriageBranch.CheckPatients -> 1
                     DoctorTriageBranch.RequestTransfer -> 2
                     null -> null
-                }
+                },
+                onChoiceClickSound = onChoiceClickSound
             )
         }
 
@@ -716,14 +865,6 @@ private fun FocusPatientContent(
             )
         }
 
-        AnimatedDoctorChatItem(visible = revealedItemCount >= 13) {
-            ChatSceneImage(
-                imageResId = R.drawable.doctor_hospital_record,
-                contentDescription = "병원에서 환자를 돌보는 의료진",
-                height = 214.dp
-            )
-        }
-
     }
 }
 
@@ -791,15 +932,6 @@ private fun CheckPatientsContent(
 
         AnimatedDoctorChatItem(visible = revealedItemCount >= 11) {
             MyChatElement(chatText = "...")
-        }
-
-        AnimatedDoctorChatItem(visible = revealedItemCount >= 12) {
-            ChatSceneImage(
-                imageResId = R.drawable.doctor_crowd_record,
-                contentDescription = "광주 시내에 모인 시민들과 검은 연기",
-                height = 439.dp,
-                contentScale = ContentScale.Fit
-            )
         }
 
     }
@@ -993,7 +1125,7 @@ private fun doctorActiveRecordDetailContent(
                 imageResId = R.drawable.doctor_hospital_record,
                 imageContentDescription = "병원에서 환자를 돌보는 의료진",
                 imageHeight = 214.dp,
-                bodyText = "계엄군의 강경 진압으로 광주 시내 곳곳에서 부상자가 발생했습니다.\n당시 전남대병원과 광주기독병원 의료진들은 부족한 의료 물품 속에서도\n시민들을 치료해야 했으며, 의대생과 간호사들 또한 구조 활동에 참여했습니다.\n병원으로 이송되지 못한 부상자들은 거리에서 응급 처치를 받기도 했습니다."
+                bodyText = "계엄군의 강경 진압으로 광주 시내 곳곳에서 부상자가 발생했습니다.\n당시 전남대병원과 광주기독병원 의료진들은 부족한 의료 물품 속에서도\n시민들을 치료해야 했으며,\n의대생과 간호사들 또한 구조 활동에 참여했습니다.\n병원으로 이송되지 못한 부상자들은 거리에서 응급 처치를 받기도 했습니다."
             )
         }
 
@@ -1020,7 +1152,8 @@ private fun rememberDoctorSequentialRevealCount(
     enabled: Boolean = true,
     blockedAfterItemIndex: Int? = null,
     canRevealAfterBlockedItem: Boolean = true,
-    firstItemNextRevealDelayMillis: Int = DOCTOR_CHAT_ELEMENT_REVEAL_DURATION_MILLIS
+    firstItemNextRevealDelayMillis: Int = DOCTOR_CHAT_ELEMENT_REVEAL_DURATION_MILLIS,
+    isPaused: Boolean = false
 ): Int {
     val initialItemCount = initiallyVisibleItemCount.coerceIn(0, itemCount)
     val blockedItemIndex = blockedAfterItemIndex?.coerceIn(0, itemCount)
@@ -1035,12 +1168,15 @@ private fun rememberDoctorSequentialRevealCount(
         enabled,
         blockedItemIndex,
         canRevealAfterBlockedItem,
-        firstItemNextRevealDelayMillis
+        firstItemNextRevealDelayMillis,
+        isPaused
     ) {
         if (!enabled) {
             revealedItemCount = 0
             return@LaunchedEffect
         }
+
+        if (isPaused) return@LaunchedEffect
 
         revealedItemCount = revealedItemCount.coerceAtLeast(initialItemCount)
 
@@ -1182,30 +1318,14 @@ private enum class DoctorTriageBranch {
 private fun doctorInfoUnreadStateKey(
     selectedOpeningBranch: DoctorOpeningBranch?,
     selectedTriageBranch: DoctorTriageBranch?,
-    revealedInitialItemCount: Int,
-    revealedRunToPatientItemCount: Int,
-    revealedPrepareHospitalItemCount: Int,
-    revealedFocusPatientItemCount: Int,
-    revealedCheckPatientsItemCount: Int,
-    revealedRequestTransferItemCount: Int,
     finalSequenceKey: String?
 ): String? {
     if (finalSequenceKey != null) return null
 
     return when {
-        selectedTriageBranch == DoctorTriageBranch.FocusPatient &&
-            revealedFocusPatientItemCount >= 14 -> "doctor_focus_patient_scene"
-        selectedTriageBranch == DoctorTriageBranch.CheckPatients &&
-            revealedCheckPatientsItemCount >= 13 -> "doctor_check_patients_scene"
-        selectedTriageBranch == DoctorTriageBranch.RequestTransfer &&
-            revealedRequestTransferItemCount >= 18 -> "doctor_request_transfer_scene"
-        selectedOpeningBranch == DoctorOpeningBranch.RunToPatient &&
-            selectedTriageBranch == null &&
-            revealedRunToPatientItemCount >= DOCTOR_RUN_TO_PATIENT_ELEMENT_COUNT -> "doctor_run_to_patient_choice"
-        selectedOpeningBranch == DoctorOpeningBranch.PrepareHospital &&
-            revealedPrepareHospitalItemCount >= 14 -> "doctor_prepare_hospital_scene"
-        selectedOpeningBranch == null &&
-            revealedInitialItemCount >= DOCTOR_INITIAL_ELEMENT_COUNT -> "doctor_intro_choice"
+        selectedTriageBranch == DoctorTriageBranch.FocusPatient -> "doctor_focus_patient_scene"
+        selectedTriageBranch == DoctorTriageBranch.RequestTransfer -> "doctor_request_transfer_scene"
+        selectedOpeningBranch == DoctorOpeningBranch.PrepareHospital -> "doctor_prepare_hospital_scene"
         else -> null
     }
 }

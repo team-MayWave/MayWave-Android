@@ -11,8 +11,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -24,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.annotation.DrawableRes
 import com.example.maywave.R
+import com.example.maywave.audio.sound.RoleVoiceSound
 import com.example.maywave.chat.navigation.ChatRoute
 import com.example.maywave.intro.component.IntroArrowButton
 import com.example.maywave.intro.component.IntroSelectTextButton
@@ -38,9 +42,25 @@ import com.example.maywave.ui.theme.MayWaveTheme
 @Composable
 fun Intro(
     modifier: Modifier = Modifier,
-    onStartChat: (ChatRoute) -> Unit = {}
+    onStartChat: (ChatRoute) -> Unit = {},
+    isRoleVoiceEnabled: Boolean = true,
+    onPlayRoleVoice: (RoleVoiceSound) -> Unit = {},
+    onStopRoleVoice: () -> Unit = {}
 ) {
     var selectedRole by rememberSaveable { mutableStateOf(IntroRole.Citizen) }
+    val currentOnPlayRoleVoice by rememberUpdatedState(onPlayRoleVoice)
+    val currentOnStopRoleVoice by rememberUpdatedState(onStopRoleVoice)
+
+    LaunchedEffect(isRoleVoiceEnabled, selectedRole) {
+        if (!isRoleVoiceEnabled) return@LaunchedEffect
+        currentOnPlayRoleVoice(selectedRole.voiceSound)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnStopRoleVoice()
+        }
+    }
 
     IntroRoleScreen(
         roleImageRes = selectedRole.imageRes,
@@ -224,22 +244,26 @@ private val SelectButtonVisualHeight = 25.dp
 private enum class IntroRole(
     @DrawableRes val imageRes: Int,
     val imageDescription: String,
-    val route: ChatRoute
+    val route: ChatRoute,
+    val voiceSound: RoleVoiceSound
 ) {
     Citizen(
         imageRes = R.drawable.intro_citizen,
         imageDescription = "시민 역할",
-        route = ChatRoute.Citizen
+        route = ChatRoute.Citizen,
+        voiceSound = RoleVoiceSound.Citizen
     ),
     Doctor(
         imageRes = R.drawable.intro_doctor,
         imageDescription = "의사 역할",
-        route = ChatRoute.Doctor
+        route = ChatRoute.Doctor,
+        voiceSound = RoleVoiceSound.Doctor
     ),
     Reporter(
         imageRes = R.drawable.intro_reporter,
         imageDescription = "기자 역할",
-        route = ChatRoute.Reporter
+        route = ChatRoute.Reporter,
+        voiceSound = RoleVoiceSound.Reporter
     );
 
     fun previous(): IntroRole = when (this) {
