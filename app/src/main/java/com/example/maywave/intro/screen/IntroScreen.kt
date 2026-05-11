@@ -222,7 +222,7 @@ private val SelectButtonVisualHeight = 25.dp
 
 
 private enum class IntroRole(
-    @param:DrawableRes val imageRes: Int,
+    @DrawableRes val imageRes: Int,
     val imageDescription: String,
     val route: ChatRoute
 ) {

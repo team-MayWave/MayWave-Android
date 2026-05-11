@@ -47,7 +47,9 @@ import com.example.maywave.chat.component.message.OtherChatElement
 import com.example.maywave.chat.component.navigation.ChatBackButton
 import com.example.maywave.chat.component.overlay.ChatFinalFadeOverlay
 import com.example.maywave.chat.component.overlay.ChatFinalStep
-import com.example.maywave.chat.component.record.ChatRecord
+import com.example.maywave.chat.component.record.ChatRecordDetailContent
+import com.example.maywave.chat.component.record.ChatRecordDetailTransition
+import com.example.maywave.chat.component.record.ChatRecordTypingAutoScrollProvider
 import com.example.maywave.chat.viewmodel.ChatGameRequest
 import com.example.maywave.chat.viewmodel.ChatGameUiState
 import com.example.maywave.chat.viewmodel.ChatGameViewModel
@@ -57,7 +59,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
-private const val CHAT_RECORD_TRANSITION_DURATION_MILLIS = 2_000
+private const val SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS = 4_000
 private const val INITIAL_CHAT_ELEMENT_COUNT = 8
 private const val CLOSE_BRANCH_ELEMENT_COUNT = 10
 private const val HELP_FALLEN_ELEMENT_COUNT = 8
@@ -66,6 +68,9 @@ private const val DISTANCE_BRANCH_ELEMENT_COUNT = 10
 private const val HELP_FALLEN_RECORD_ITEM_INDEX = 6
 private const val AVOID_SITUATION_RECORD_ITEM_INDEX = 9
 private const val DISTANCE_RECORD_ITEM_INDEX = 8
+private const val AUTO_SCROLL_LAYOUT_DELAY_MILLIS = 100
+private const val AUTO_SCROLL_ANIMATION_DURATION_MILLIS = 650
+private const val CHAT_ITEM_REVEAL_DELAY_MILLIS = 0
 private val CHAT_ELEMENT_SPACING = 35.dp
 private val BRANCH_CHAT_ELEMENT_SPACING = 35.dp
 private val AUTO_SCROLL_BOTTOM_PADDING = 16.dp
@@ -124,7 +129,8 @@ fun CitizenChatScreen(
         itemCount = closeItemCount,
         revealKey = branchRevealKey,
         enabled = selectedBranch == CitizenChatBranch.Close &&
-            chatGameUiState.isResultReadyFor(CitizenCloseRequest)
+            chatGameUiState.isResultReadyFor(CitizenCloseRequest),
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
     )
     val revealedDistanceItemCount = rememberSequentialRevealCount(
         itemCount = distanceItemCount,
@@ -132,7 +138,8 @@ fun CitizenChatScreen(
         enabled = selectedBranch == CitizenChatBranch.Distance &&
             chatGameUiState.isResultReadyFor(CitizenDistanceRequest),
         blockedAfterItemIndex = DISTANCE_RECORD_ITEM_INDEX,
-        canRevealAfterBlockedItem = isDistanceRecordTypingFinished
+        canRevealAfterBlockedItem = isDistanceRecordTypingFinished,
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
     )
     val revealedHelpFallenItemCount = rememberSequentialRevealCount(
         itemCount = helpFallenItemCount,
@@ -140,7 +147,8 @@ fun CitizenChatScreen(
         enabled = selectedCloseBranch == CitizenCloseBranch.HelpFallen &&
             chatGameUiState.isResultReadyFor(CitizenHelpFallenRequest),
         blockedAfterItemIndex = HELP_FALLEN_RECORD_ITEM_INDEX,
-        canRevealAfterBlockedItem = isHelpFallenRecordTransitionFinished
+        canRevealAfterBlockedItem = isHelpFallenRecordTransitionFinished,
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
     )
     val revealedAvoidSituationItemCount = rememberSequentialRevealCount(
         itemCount = avoidSituationItemCount,
@@ -148,7 +156,8 @@ fun CitizenChatScreen(
         enabled = selectedCloseBranch == CitizenCloseBranch.AvoidSituation &&
             chatGameUiState.isResultReadyFor(CitizenAvoidSituationRequest),
         blockedAfterItemIndex = AVOID_SITUATION_RECORD_ITEM_INDEX,
-        canRevealAfterBlockedItem = isAvoidSituationRecordTypingFinished
+        canRevealAfterBlockedItem = isAvoidSituationRecordTypingFinished,
+        firstItemNextRevealDelayMillis = SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS
     )
     val finalSequenceKey = when {
         selectedCloseBranch == CitizenCloseBranch.HelpFallen &&
@@ -172,15 +181,16 @@ fun CitizenChatScreen(
         revealedAvoidSituationItemCount = revealedAvoidSituationItemCount,
         finalSequenceKey = finalSequenceKey
     )
+    val activeRecordDetailContent = citizenActiveRecordDetailContent(
+        selectedBranch = selectedBranch,
+        selectedCloseBranch = selectedCloseBranch,
+        revealedHelpFallenItemCount = revealedHelpFallenItemCount,
+        revealedAvoidSituationItemCount = revealedAvoidSituationItemCount,
+        revealedDistanceItemCount = revealedDistanceItemCount
+    )
 
     LaunchedEffect(infoUnreadStateKey) {
         infoUnreadStateKey?.let(onInfoUnreadStateShown)
-    }
-
-    LaunchedEffect(selectedCloseBranch, closeBranchRevealKey) {
-        if (selectedCloseBranch != CitizenCloseBranch.HelpFallen) {
-            isHelpFallenRecordTransitionFinished = false
-        }
     }
 
     AutoScrollOnReveal(
@@ -231,157 +241,160 @@ fun CitizenChatScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        ChatRecordDetailTransition(
+            content = activeRecordDetailContent,
+            onRecordTypingFinished = {
+                when {
+                    selectedCloseBranch == CitizenCloseBranch.HelpFallen -> {
+                        isHelpFallenRecordTransitionFinished = true
+                    }
+
+                    selectedCloseBranch == CitizenCloseBranch.AvoidSituation -> {
+                        isAvoidSituationRecordTypingFinished = true
+                    }
+
+                    selectedBranch == CitizenChatBranch.Distance -> {
+                        isDistanceRecordTypingFinished = true
+                    }
+                }
+            },
             modifier = Modifier.fillMaxSize()
         ) {
-            ChatHeader(
-                onBackClick = onBackClick,
-                onInfoClick = onInfoClick,
-                showInfoUnreadDot = showInfoUnreadDot && infoUnreadStateKey != null,
-                onInfoRead = onInfoRead
-            )
-
-            LazyColumn(
-                state = listState,
+            Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(CHAT_ELEMENT_SPACING),
-                contentPadding = PaddingValues(top = 49.dp, bottom = 48.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
+                modifier = Modifier.fillMaxSize()
             ) {
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 1) {
-                        ElementTitle()
-                    }
-                }
+                ChatHeader(
+                    onBackClick = onBackClick,
+                    onInfoClick = onInfoClick,
+                    showInfoUnreadDot = showInfoUnreadDot && infoUnreadStateKey != null,
+                    onInfoRead = onInfoRead
+                )
 
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 2) {
-                        ChatSceneImage(
-                            imageResId = R.drawable.chat_first_img,
-                            contentDescription = "금남로에 모인 시민들",
-                            height = 214.dp
-                        )
+                LazyColumn(
+                    state = listState,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(CHAT_ELEMENT_SPACING),
+                    contentPadding = PaddingValues(top = 49.dp, bottom = 48.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 1) {
+                            ElementTitle()
+                        }
                     }
-                }
 
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 3) {
-                        ChatFirstText(text = "시내 분위기가 심상치 않습니다")
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 2) {
+                            ChatSceneImage(
+                                imageResId = R.drawable.chat_first_img,
+                                contentDescription = "금남로에 모인 시민들",
+                                height = 214.dp
+                            )
+                        }
                     }
-                }
 
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 4) {
-                        ChatFirstText(text = "사람들이 모여들기 시작합니다")
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 3) {
+                            ChatFirstText(text = "시내 분위기가 심상치 않습니다")
+                        }
                     }
-                }
 
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 5) {
-                        OtherChatElement(
-                            nameText = "친구",
-                            chatText = "전남대 쪽에서 학생들이 막혔다더라. 계엄군이 들어왔대."
-                        )
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 4) {
+                            ChatFirstText(text = "사람들이 모여들기 시작합니다")
+                        }
                     }
-                }
 
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 6) {
-                        MyChatElement(chatText = "무슨 일인데?")
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 5) {
+                            OtherChatElement(
+                                nameText = "친구",
+                                chatText = "전남대 쪽에서 학생들이 막혔다더라. 계엄군이 들어왔대."
+                            )
+                        }
                     }
-                }
 
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 7) {
-                        ChatNarrationText(text = "잠시 후, 군인들이 시내로 이동합니다.")
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 6) {
+                            MyChatElement(chatText = "무슨 일인데?")
+                        }
                     }
-                }
 
-                item {
-                    AnimatedChatItem(visible = revealedInitialItemCount >= 8) {
-                        ChatChoiceElement(
-                            firstChoiceText = "가까이 가서 본다",
-                            secondChoiceText = "멀리서 지켜 본다",
-                            onFirstChoiceClick = {
-                                selectedBranch = CitizenChatBranch.Close
-                                selectedCloseBranch = null
-                                branchRevealKey += 1
-                                closeBranchRevealKey = 0
-                                isHelpFallenRecordTransitionFinished = false
-                                isAvoidSituationRecordTypingFinished = false
-                                isDistanceRecordTypingFinished = false
-                                chatGameViewModel.submitChoice(CitizenCloseRequest)
-                            },
-                            onSecondChoiceClick = {
-                                selectedBranch = CitizenChatBranch.Distance
-                                selectedCloseBranch = null
-                                branchRevealKey += 1
-                                closeBranchRevealKey = 0
-                                isHelpFallenRecordTransitionFinished = false
-                                isAvoidSituationRecordTypingFinished = false
-                                isDistanceRecordTypingFinished = false
-                                chatGameViewModel.submitChoice(CitizenDistanceRequest)
-                            },
-                            selectedChoiceIndex = when (selectedBranch) {
-                                CitizenChatBranch.Close -> 0
-                                CitizenChatBranch.Distance -> 1
-                                null -> null
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 7) {
+                            ChatNarrationText(text = "잠시 후, 군인들이 시내로 이동합니다.")
+                        }
+                    }
+
+                    item {
+                        AnimatedChatItem(visible = revealedInitialItemCount >= 8) {
+                            ChatChoiceElement(
+                                firstChoiceText = "가까이 가서 본다",
+                                secondChoiceText = "멀리서 지켜 본다",
+                                onFirstChoiceClick = {
+                                    selectedBranch = CitizenChatBranch.Close
+                                    branchRevealKey += 1
+                                    chatGameViewModel.submitChoice(CitizenCloseRequest)
+                                },
+                                onSecondChoiceClick = {
+                                    selectedBranch = CitizenChatBranch.Distance
+                                    branchRevealKey += 1
+                                    chatGameViewModel.submitChoice(CitizenDistanceRequest)
+                                },
+                                selectedChoiceIndex = when (selectedBranch) {
+                                    CitizenChatBranch.Close -> 0
+                                    CitizenChatBranch.Distance -> 1
+                                    null -> null
+                                }
+                            )
+                        }
+                    }
+
+                    when (selectedBranch) {
+                        CitizenChatBranch.Close -> {
+                            item {
+                                ChatRecordTypingAutoScrollProvider(
+                                    enabled = shouldFollowNewContent
+                                ) {
+                                    CloseBranchContent(
+                                        selectedCloseBranch = selectedCloseBranch,
+                                        chatGameUiState = chatGameUiState,
+                                        revealedItemCount = revealedCloseItemCount,
+                                        revealedHelpFallenItemCount = revealedHelpFallenItemCount,
+                                        revealedAvoidSituationItemCount = revealedAvoidSituationItemCount,
+                                        onHelpFallenClick = {
+                                            selectedCloseBranch = CitizenCloseBranch.HelpFallen
+                                            closeBranchRevealKey += 1
+                                            chatGameViewModel.submitChoice(CitizenHelpFallenRequest)
+                                        },
+                                        onAvoidSituationClick = {
+                                            selectedCloseBranch = CitizenCloseBranch.AvoidSituation
+                                            closeBranchRevealKey += 1
+                                            chatGameViewModel.submitChoice(CitizenAvoidSituationRequest)
+                                        }
+                                    )
+                                }
                             }
-                        )
-                    }
-                }
-
-                when (selectedBranch) {
-                    CitizenChatBranch.Close -> {
-                        item {
-                            CloseBranchContent(
-                                selectedCloseBranch = selectedCloseBranch,
-                                chatGameUiState = chatGameUiState,
-                                revealedItemCount = revealedCloseItemCount,
-                                revealedHelpFallenItemCount = revealedHelpFallenItemCount,
-                                revealedAvoidSituationItemCount = revealedAvoidSituationItemCount,
-                                isHelpFallenRecordTransitionFinished = isHelpFallenRecordTransitionFinished,
-                                onHelpFallenClick = {
-                                    selectedCloseBranch = CitizenCloseBranch.HelpFallen
-                                    closeBranchRevealKey += 1
-                                    isHelpFallenRecordTransitionFinished = false
-                                    isAvoidSituationRecordTypingFinished = false
-                                    chatGameViewModel.submitChoice(CitizenHelpFallenRequest)
-                                },
-                                onHelpFallenRecordTransitionFinished = {
-                                    isHelpFallenRecordTransitionFinished = true
-                                },
-                                onAvoidSituationRecordTypingFinished = {
-                                    isAvoidSituationRecordTypingFinished = true
-                                },
-                                onAvoidSituationClick = {
-                                    selectedCloseBranch = CitizenCloseBranch.AvoidSituation
-                                    closeBranchRevealKey += 1
-                                    isHelpFallenRecordTransitionFinished = false
-                                    isAvoidSituationRecordTypingFinished = false
-                                    chatGameViewModel.submitChoice(CitizenAvoidSituationRequest)
-                                }
-                            )
                         }
-                    }
 
-                    CitizenChatBranch.Distance -> {
-                        item {
-                            DistanceBranchContent(
-                                resultText = chatGameUiState.resultTextFor(CitizenDistanceRequest),
-                                revealedItemCount = revealedDistanceItemCount,
-                                isRecordTypingFinished = isDistanceRecordTypingFinished,
-                                onRecordTypingFinished = {
-                                    isDistanceRecordTypingFinished = true
+                        CitizenChatBranch.Distance -> {
+                            item {
+                                ChatRecordTypingAutoScrollProvider(
+                                    enabled = shouldFollowNewContent
+                                ) {
+                                    DistanceBranchContent(
+                                        resultText = chatGameUiState.resultTextFor(CitizenDistanceRequest),
+                                        revealedItemCount = revealedDistanceItemCount
+                                    )
                                 }
-                            )
+                            }
                         }
-                    }
 
-                    null -> Unit
+                        null -> Unit
+                    }
                 }
             }
         }
@@ -446,7 +459,8 @@ private fun rememberSequentialRevealCount(
     initiallyVisibleItemCount: Int = 0,
     enabled: Boolean = true,
     blockedAfterItemIndex: Int? = null,
-    canRevealAfterBlockedItem: Boolean = true
+    canRevealAfterBlockedItem: Boolean = true,
+    firstItemNextRevealDelayMillis: Int = CHAT_ELEMENT_REVEAL_DURATION_MILLIS
 ): Int {
     val initialItemCount = initiallyVisibleItemCount.coerceIn(0, itemCount)
     val blockedItemIndex = blockedAfterItemIndex?.coerceIn(0, itemCount)
@@ -460,7 +474,8 @@ private fun rememberSequentialRevealCount(
         initialItemCount,
         enabled,
         blockedItemIndex,
-        canRevealAfterBlockedItem
+        canRevealAfterBlockedItem,
+        firstItemNextRevealDelayMillis
     ) {
         if (!enabled) {
             revealedItemCount = 0
@@ -478,7 +493,12 @@ private fun rememberSequentialRevealCount(
                 return@LaunchedEffect
             }
 
-            delay(CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
+            val revealDelayMillis = if (revealedItemCount == 1) {
+                firstItemNextRevealDelayMillis
+            } else {
+                CHAT_ELEMENT_REVEAL_DURATION_MILLIS
+            }
+            delay(revealDelayMillis.toLong())
             revealedItemCount += 1
         }
     }
@@ -527,7 +547,7 @@ private fun AutoScrollOnReveal(
 
     LaunchedEffect(revealKey, enabled, targetItemIndex) {
         if (!enabled) return@LaunchedEffect
-        delay(100)
+        delay(AUTO_SCROLL_LAYOUT_DELAY_MILLIS.toLong())
         if (!currentShouldFollowNewContent) return@LaunchedEffect
 
         val layoutInfo = listState.layoutInfo
@@ -542,7 +562,10 @@ private fun AutoScrollOnReveal(
                     layoutInfo.viewportEndOffset
 
                 if (overflow > 0f) {
-                    listState.animateScrollBy(overflow)
+                    listState.animateScrollBy(
+                        value = overflow,
+                        animationSpec = tween(durationMillis = AUTO_SCROLL_ANIMATION_DURATION_MILLIS)
+                    )
                 }
             } else if (targetIndex > (layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1)) {
                 listState.animateScrollToItem(targetIndex)
@@ -555,21 +578,26 @@ private fun AutoScrollOnReveal(
 private fun AnimatedChatItem(
     visible: Boolean,
     modifier: Modifier = Modifier,
+    animateInitiallyVisible: Boolean = false,
+    revealDelayMillis: Int = CHAT_ITEM_REVEAL_DELAY_MILLIS,
     content: @Composable () -> Unit
 ) {
-    var hasStartedReveal by remember { mutableStateOf(visible) }
+    var hasStartedReveal by remember {
+        mutableStateOf(visible && !animateInitiallyVisible)
+    }
     val alpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
+        targetValue = if (hasStartedReveal) 1f else 0f,
         animationSpec = tween(durationMillis = CHAT_ELEMENT_REVEAL_DURATION_MILLIS),
         label = "chat item alpha"
     )
     LaunchedEffect(visible) {
         if (visible) {
+            delay(revealDelayMillis.toLong())
             hasStartedReveal = true
         }
     }
 
-    if (hasStartedReveal) {
+    if (visible || hasStartedReveal) {
         Box(
             modifier = modifier
                 .alpha(alpha)
@@ -586,10 +614,7 @@ private fun CloseBranchContent(
     revealedItemCount: Int,
     revealedHelpFallenItemCount: Int,
     revealedAvoidSituationItemCount: Int,
-    isHelpFallenRecordTransitionFinished: Boolean,
     onHelpFallenClick: () -> Unit,
-    onHelpFallenRecordTransitionFinished: () -> Unit,
-    onAvoidSituationRecordTypingFinished: () -> Unit,
     onAvoidSituationClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -597,7 +622,10 @@ private fun CloseBranchContent(
         verticalArrangement = Arrangement.spacedBy(BRANCH_CHAT_ELEMENT_SPACING),
         modifier = modifier.fillMaxWidth()
     ) {
-        AnimatedChatItem(visible = revealedItemCount >= 1) {
+        AnimatedChatItem(
+            visible = revealedItemCount >= 1,
+            animateInitiallyVisible = true
+        ) {
             ChatNarrationText(text = chatGameUiState.resultTextFor(CitizenCloseRequest))
         }
 
@@ -660,17 +688,14 @@ private fun CloseBranchContent(
             CitizenCloseBranch.HelpFallen -> {
                 HelpFallenContent(
                     resultText = chatGameUiState.resultTextFor(CitizenHelpFallenRequest),
-                    revealedItemCount = revealedHelpFallenItemCount,
-                    isRecordTransitionFinished = isHelpFallenRecordTransitionFinished,
-                    onRecordTransitionFinished = onHelpFallenRecordTransitionFinished
+                    revealedItemCount = revealedHelpFallenItemCount
                 )
             }
 
             CitizenCloseBranch.AvoidSituation -> {
                 AvoidSituationContent(
                     resultText = chatGameUiState.resultTextFor(CitizenAvoidSituationRequest),
-                    revealedItemCount = revealedAvoidSituationItemCount,
-                    onRecordTypingFinished = onAvoidSituationRecordTypingFinished
+                    revealedItemCount = revealedAvoidSituationItemCount
                 )
             }
 
@@ -683,24 +708,16 @@ private fun CloseBranchContent(
 private fun HelpFallenContent(
     resultText: String,
     revealedItemCount: Int,
-    isRecordTransitionFinished: Boolean,
-    onRecordTransitionFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(BRANCH_CHAT_ELEMENT_SPACING),
         modifier = modifier.fillMaxWidth()
     ) {
-        if (revealedItemCount < HELP_FALLEN_RECORD_ITEM_INDEX) {
+        if (revealedItemCount <= HELP_FALLEN_RECORD_ITEM_INDEX) {
             HelpFallenBeforeRecordItems(
                 resultText = resultText,
                 revealedItemCount = revealedItemCount
-            )
-        } else {
-            HelpFallenRecordTransition(
-                resultText = resultText,
-                isTransitionFinished = isRecordTransitionFinished,
-                onTransitionFinished = onRecordTransitionFinished
             )
         }
     }
@@ -716,7 +733,10 @@ private fun HelpFallenBeforeRecordItems(
         verticalArrangement = Arrangement.spacedBy(BRANCH_CHAT_ELEMENT_SPACING),
         modifier = modifier.fillMaxWidth()
     ) {
-        AnimatedChatItem(visible = revealedItemCount >= 1) {
+        AnimatedChatItem(
+            visible = revealedItemCount >= 1,
+            animateInitiallyVisible = true
+        ) {
             ChatNarrationText(text = resultText)
         }
 
@@ -748,96 +768,21 @@ private fun HelpFallenBeforeRecordItems(
 }
 
 @Composable
-private fun HelpFallenRecordTransition(
-    resultText: String,
-    isTransitionFinished: Boolean,
-    onTransitionFinished: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var isBeforeRecordVisible by remember { mutableStateOf(!isTransitionFinished) }
-    var isRecordVisible by remember { mutableStateOf(isTransitionFinished) }
-    val beforeRecordAlpha by animateFloatAsState(
-        targetValue = if (isBeforeRecordVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = CHAT_RECORD_TRANSITION_DURATION_MILLIS),
-        label = "help fallen before record alpha"
-    )
-    val recordAlpha by animateFloatAsState(
-        targetValue = if (isRecordVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = CHAT_RECORD_TRANSITION_DURATION_MILLIS),
-        label = "help fallen record alpha"
-    )
-
-    LaunchedEffect(isTransitionFinished) {
-        if (isTransitionFinished) {
-            isBeforeRecordVisible = false
-            isRecordVisible = true
-            return@LaunchedEffect
-        }
-
-        isBeforeRecordVisible = true
-        isRecordVisible = false
-        isBeforeRecordVisible = false
-        delay(CHAT_RECORD_TRANSITION_DURATION_MILLIS.toLong())
-        isRecordVisible = true
-    }
-
-    Box(modifier = modifier.fillMaxWidth()) {
-        HelpFallenBeforeRecordItems(
-            resultText = resultText,
-            revealedItemCount = 5,
-            modifier = Modifier.alpha(beforeRecordAlpha)
-        )
-
-        if (isRecordVisible || isTransitionFinished) {
-            HelpFallenRecordItems(
-                isRecordTypingFinished = isTransitionFinished,
-                onRecordTypingFinished = onTransitionFinished,
-                modifier = Modifier.alpha(recordAlpha)
-            )
-        }
-    }
-}
-
-@Composable
-private fun HelpFallenRecordItems(
-    isRecordTypingFinished: Boolean,
-    onRecordTypingFinished: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(BRANCH_CHAT_ELEMENT_SPACING),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        ChatSceneImage(
-            imageResId = R.drawable.citizen_close_record,
-            contentDescription = "군인에게 폭행당하는 시민",
-            height = 226.dp,
-            contentScale = ContentScale.Fit
-        )
-
-        ChatRecord(
-            bodyText = "당시 금남로 일대에는 공수부대의 강경 진압이 이어지고 있었으며,\n박금규는 가톨릭센터 인근에서 공수부대원에게 폭행당했습니다.\n이러한 진압 장면들은 시민들에게 빠르게 알려졌고,\n분노한 시민들이 거리로 모여들기 시작했습니다.\n이후 시위는 학생 중심에서\n시민 전체로 확산되며 광주 전역으로 퍼져나갔습니다.",
-            onTypingFinished = onRecordTypingFinished
-        )
-
-        AnimatedChatItem(visible = isRecordTypingFinished) {
-            ChatNarrationText(text = "당신은 그 시작을 목격합니다.")
-        }
-    }
-}
-
-@Composable
 private fun AvoidSituationContent(
     resultText: String,
     revealedItemCount: Int,
-    onRecordTypingFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isCompletionTextVisible = revealedItemCount >= AVOID_SITUATION_RECORD_ITEM_INDEX
+
     Column(
         verticalArrangement = Arrangement.spacedBy(BRANCH_CHAT_ELEMENT_SPACING),
         modifier = modifier.fillMaxWidth()
     ) {
-        AnimatedChatItem(visible = revealedItemCount >= 1) {
+        AnimatedChatItem(
+            visible = revealedItemCount >= 1,
+            animateInitiallyVisible = true
+        ) {
             ChatNarrationText(text = resultText)
         }
 
@@ -884,10 +829,9 @@ private fun AvoidSituationContent(
             )
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 9) {
-            ChatRecord(
-                bodyText = "계엄군의 진압이 계속되자 더 많은 시민들이 금남로로 모여들기 시작했습니다.\n당시 시민군으로 알려진 김군과 같은 평범한 시민들도\n거리에 나와 시위대와 부상자들을 돕고 있었습니다.\n학생들의 시위는 시민 전체의 저항으로 확산되고 있었습니다.\n당신은 그날의 광주를 바라보고 있었습니다.",
-                onTypingFinished = onRecordTypingFinished
+        AnimatedChatItem(visible = isCompletionTextVisible) {
+            ChatNarrationText(
+                text = "계엄군의 진압이 계속되자 더 많은 시민들이 금남로로 모여들기 시작했습니다.\n당신은 그날의 광주를 바라보고 있었습니다."
             )
         }
     }
@@ -897,15 +841,16 @@ private fun AvoidSituationContent(
 private fun DistanceBranchContent(
     resultText: String,
     revealedItemCount: Int,
-    isRecordTypingFinished: Boolean,
-    onRecordTypingFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(BRANCH_CHAT_ELEMENT_SPACING),
         modifier = modifier.fillMaxWidth()
     ) {
-        AnimatedChatItem(visible = revealedItemCount >= 1) {
+        AnimatedChatItem(
+            visible = revealedItemCount >= 1,
+            animateInitiallyVisible = true
+        ) {
             ChatNarrationText(text = resultText)
         }
 
@@ -943,18 +888,6 @@ private fun DistanceBranchContent(
             )
         }
 
-        AnimatedChatItem(visible = revealedItemCount >= 8) {
-            ChatRecord(
-                dateText = "1980년 5월 18일",
-                bodyText = "계엄군의 강경 진압이 이어지면서 광주 시내에는\n더 많은 시민들이 모여들기 시작했습니다.\n당시 시민군과 대변인을 맡게 되는 윤상원 역시 시민들과\n함께 광주의 상황을 알리며 민주화를 요구하고 있었습니다.\n시민들의 증언과 현장의 소식은 빠르게 퍼져나갔고,\n학생 중심이던 시위는 시민 전체의 저항으로 확산되었습니다.\n당신은 그날의 광주를 지켜본 시민 중 한 사람이었습니다.",
-                onTypingFinished = onRecordTypingFinished
-            )
-        }
-
-        AnimatedChatItem(visible = isRecordTypingFinished && revealedItemCount >= 9) {
-            ChatNarrationText(text = "당신은 그날의 시작을, 그 자리에서 지켜보고 있었습니다.")
-        }
-
     }
 }
 
@@ -966,6 +899,55 @@ private enum class CitizenChatBranch {
 private enum class CitizenCloseBranch {
     HelpFallen,
     AvoidSituation
+}
+
+private fun citizenActiveRecordDetailContent(
+    selectedBranch: CitizenChatBranch?,
+    selectedCloseBranch: CitizenCloseBranch?,
+    revealedHelpFallenItemCount: Int,
+    revealedAvoidSituationItemCount: Int,
+    revealedDistanceItemCount: Int
+): ChatRecordDetailContent? {
+    return when {
+        selectedCloseBranch == CitizenCloseBranch.HelpFallen &&
+            revealedHelpFallenItemCount >= HELP_FALLEN_RECORD_ITEM_INDEX -> {
+            ChatRecordDetailContent(
+                imageResId = R.drawable.citizen_close_record,
+                imageContentDescription = "군인에게 폭행당하는 시민",
+                imageHeight = 226.dp,
+                imageContentScale = ContentScale.Fit,
+                bodyText = "사진 속 인물은 훗날 시민군 상황실장을\n맡게 되는 박남선의 동생, 박남규입니다.\n당시 금남로 일대에서는 공수부대의 강경 진압이 이어지고 있었으며,\n박남규는 가톨릭센터 인근에서 공수부대원에게 폭행당했습니다.\n이러한 진압 장면들은 시민들에게 빠르게 알려졌고,\n분노한 시민들이 거리로 모여들기 시작했습니다.\n이후 시위는 학생 중심에서\n시민 전체로 확산되며 광주 전역으로 퍼져나갔습니다.",
+                bottomText = "당신은 그 시작을 목격습니다."
+            )
+        }
+
+        selectedCloseBranch == CitizenCloseBranch.AvoidSituation &&
+            revealedAvoidSituationItemCount >= AVOID_SITUATION_RECORD_ITEM_INDEX -> {
+            ChatRecordDetailContent(
+                imageResId = R.drawable.citizen_intro_record,
+                imageContentDescription = "금남로의 계엄군",
+                dateText = "1980년 5월 21일",
+                imageHeight = 222.dp,
+                imageContentScale = ContentScale.Fit,
+                bodyText = "계엄군의 진압이 계속되자 더 많은 시민들이 금남로로 모여들기 시작했습니다.\n당시 시민군으로 알려진 김군과 같은 평범한 시민들도\n거리에서 시위대와 부상자들을 돕고 있었습니다.\n학생들의 시위는 시민 전체의 저항으로 확산되고 있었습니다.\n당신은 그날의 광주를 바라보고 있었습니다."
+            )
+        }
+
+        selectedBranch == CitizenChatBranch.Distance &&
+            revealedDistanceItemCount >= DISTANCE_RECORD_ITEM_INDEX -> {
+            ChatRecordDetailContent(
+                imageResId = R.drawable.citizen_distance_record,
+                imageContentDescription = "멀리서 지켜보는 시위 현장",
+                dateText = "1980년 5월 18일",
+                imageHeight = 455.dp,
+                imageContentScale = ContentScale.Fit,
+                bodyText = "계엄군의 강경 진압이 이어지면서 광주 시내에는\n더 많은 시민들이 모여들기 시작했습니다.\n당시 시민군과 대변인을 맡게 되는 윤상원 역시 시민들과\n함께 광주의 상황을 알리며 민주화를 요구하고 있었습니다.\n시민들의 증언과 현장의 소식은 빠르게 퍼져나갔고,\n학생 중심이던 시위는 시민 전체의 저항으로 확산되었습니다.\n당신은 그날의 광주를 지켜본 시민 중 한 사람이었습니다.",
+                bottomText = "당신은 그 시작을 목격습니다."
+            )
+        }
+
+        else -> null
+    }
 }
 
 private fun citizenInfoUnreadStateKey(

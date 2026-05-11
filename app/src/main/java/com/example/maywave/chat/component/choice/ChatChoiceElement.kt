@@ -39,10 +39,10 @@ fun ChatChoiceElement(
     secondChoiceText: String,
     onFirstChoiceClick: () -> Unit,
     onSecondChoiceClick: () -> Unit,
+    modifier: Modifier = Modifier,
     thirdChoiceText: String? = null,
     onThirdChoiceClick: (() -> Unit)? = null,
-    selectedChoiceIndex: Int? = null,
-    modifier: Modifier = Modifier
+    selectedChoiceIndex: Int? = null
 ) {
     val isChoiceLocked = selectedChoiceIndex != null
 

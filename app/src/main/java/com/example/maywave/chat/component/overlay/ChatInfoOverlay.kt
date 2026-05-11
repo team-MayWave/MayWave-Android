@@ -76,7 +76,7 @@ fun ChatInfoOverlay(
     val scrimInteractionSource = remember { MutableInteractionSource() }
 
     BoxWithConstraints(
-        contentAlignment = Alignment.TopCenter,
+        contentAlignment = Alignment.Center,
         modifier = modifier
             .fillMaxSize()
             .clickable(
@@ -86,17 +86,14 @@ fun ChatInfoOverlay(
             )
             .background(Color.Black.copy(alpha = CHAT_INFO_SCRIM_ALPHA))
     ) {
-        val cardTopOffset = CHAT_INFO_HEADER_DIVIDER_BOTTOM + CHAT_INFO_HEADER_TO_CARD_SPACING
-        val cardHeight = maxHeight - cardTopOffset - CHAT_INFO_BOTTOM_SPACING
+        val cardWidth = maxWidth * CHAT_INFO_CARD_WIDTH_RATIO
+        val cardHeight = maxHeight * CHAT_INFO_CARD_HEIGHT_RATIO
 
         ChatInfoOverlayCard(
             content = content,
             onCloseClick = onCloseClick,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(top = cardTopOffset)
-                .height(cardHeight)
+                .size(width = cardWidth, height = cardHeight)
         )
     }
 }
@@ -381,6 +378,5 @@ private fun ChatInfoOverlayPreview() {
 }
 
 private const val CHAT_INFO_SCRIM_ALPHA = 0.72f
-private val CHAT_INFO_HEADER_DIVIDER_BOTTOM = 88.dp
-private val CHAT_INFO_HEADER_TO_CARD_SPACING = 80.dp
-private val CHAT_INFO_BOTTOM_SPACING = 150.dp
+private const val CHAT_INFO_CARD_WIDTH_RATIO = 356f / 393f
+private const val CHAT_INFO_CARD_HEIGHT_RATIO = 558f / 852f

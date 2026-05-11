@@ -26,6 +26,6 @@ fun ChatNarrationText(
         textAlign = TextAlign.Center,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 38.dp)
+            .padding(horizontal = 25.dp)
     )
 }
