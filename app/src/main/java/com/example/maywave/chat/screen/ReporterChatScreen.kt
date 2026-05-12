@@ -61,7 +61,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 private const val REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
 private const val REPORTER_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS = 4_000
 private const val REPORTER_INITIAL_ELEMENT_COUNT = 21
-private const val REPORTER_INTRO_SOUND_STOP_ITEM_COUNT = REPORTER_INITIAL_ELEMENT_COUNT
+private const val REPORTER_INTRO_SOUND_STOP_ITEM_COUNT = 3
 private const val REPORTER_INITIAL_SCENE_SOUND_START_ITEM_COUNT = 8
 private const val REPORTER_INITIAL_SCENE_SOUND_FADE_ITEM_COUNT = 17
 private const val REPORTER_CONTINUE_RECORD_ELEMENT_COUNT = 11
@@ -87,7 +87,7 @@ fun ReporterChatScreen(
     onInfoClick: () -> Unit = {},
     showInfoUnreadDot: Boolean = true,
     onInfoRead: () -> Unit = {},
-    onInfoUnreadStateShown: (String) -> Unit = {},
+    onInfoUnreadStateShown: (String?) -> Unit = {},
     isChatPaused: Boolean = false,
     onIntroSceneFinished: () -> Unit = {},
     onChoiceClickSound: () -> Unit = {},
@@ -95,7 +95,8 @@ fun ReporterChatScreen(
     onFadeOutAirborneCrackdownSceneSound: () -> Unit = {},
     onStopAirborneCrackdownSceneSound: () -> Unit = {},
     onPlayRecordTypingSound: () -> Unit = {},
-    onStopRecordTypingSound: () -> Unit = {}
+    onStopRecordTypingSound: () -> Unit = {},
+    onFadeOutChatBackgroundMusic: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val chatGameViewModel: ChatGameViewModel = viewModel(
@@ -116,6 +117,7 @@ fun ReporterChatScreen(
     val currentOnStopAirborneCrackdownSceneSound by rememberUpdatedState(onStopAirborneCrackdownSceneSound)
     val currentOnPlayRecordTypingSound by rememberUpdatedState(onPlayRecordTypingSound)
     val currentOnStopRecordTypingSound by rememberUpdatedState(onStopRecordTypingSound)
+    val currentOnFadeOutChatBackgroundMusic by rememberUpdatedState(onFadeOutChatBackgroundMusic)
     val continueRecordItemCount = if (chatGameUiState.hasErrorFor(ReporterContinueRecordRequest)) {
         1
     } else {
@@ -174,7 +176,7 @@ fun ReporterChatScreen(
     )
 
     LaunchedEffect(infoUnreadStateKey) {
-        infoUnreadStateKey?.let(onInfoUnreadStateShown)
+        onInfoUnreadStateShown(infoUnreadStateKey)
     }
 
     LaunchedEffect(revealedInitialItemCount, isRevealPaused, hasNotifiedIntroSceneFinished) {
@@ -183,7 +185,6 @@ fun ReporterChatScreen(
             !isRevealPaused &&
             revealedInitialItemCount >= REPORTER_INTRO_SOUND_STOP_ITEM_COUNT
         ) {
-            delay(REPORTER_CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
             hasNotifiedIntroSceneFinished = true
             currentOnIntroSceneFinished()
         }
@@ -254,6 +255,7 @@ fun ReporterChatScreen(
         ChatRecordDetailTransition(
             content = activeRecordDetailContent,
             onRecordTypingFinished = {
+                currentOnFadeOutChatBackgroundMusic()
                 when (selectedBranch) {
                     ReporterChatBranch.ContinueRecord -> {
                         isContinueRecordTypingFinished = true

@@ -276,7 +276,7 @@ fun ChatRecordDetailTransition(
         val recordContent = retainedContent ?: return@LaunchedEffect
 
         if (
-            transitionPhase == RecordDetailTransitionPhase.RecordVisible &&
+            transitionPhase == RecordDetailTransitionPhase.FadingInRecord &&
             !hasNotifiedRecordScreenShown
         ) {
             hasNotifiedRecordScreenShown = true

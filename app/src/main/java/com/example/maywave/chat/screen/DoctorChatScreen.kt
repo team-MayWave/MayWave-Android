@@ -62,7 +62,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 private const val DOCTOR_CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
 private const val DOCTOR_SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS = 4_000
 private const val DOCTOR_INITIAL_ELEMENT_COUNT = 8
-private const val DOCTOR_INTRO_SOUND_STOP_ITEM_COUNT = DOCTOR_INITIAL_ELEMENT_COUNT
+private const val DOCTOR_INTRO_SOUND_STOP_ITEM_COUNT = 3
 private const val DOCTOR_RUN_TO_PATIENT_SOUND_STOP_ITEM_COUNT = 3
 private const val DOCTOR_CROWD_CRYING_SOUND_START_ITEM_COUNT = 4
 private const val DOCTOR_CROWD_CRYING_SOUND_FADE_OUT_ITEM_COUNT = 13
@@ -96,7 +96,7 @@ fun DoctorChatScreen(
     onInfoClick: () -> Unit = {},
     showInfoUnreadDot: Boolean = true,
     onInfoRead: () -> Unit = {},
-    onInfoUnreadStateShown: (String) -> Unit = {},
+    onInfoUnreadStateShown: (String?) -> Unit = {},
     isChatPaused: Boolean = false,
     onIntroSceneFinished: () -> Unit = {},
     onChoiceClickSound: () -> Unit = {},
@@ -109,7 +109,8 @@ fun DoctorChatScreen(
     onFadeOutHeartbeatSound: () -> Unit = {},
     onStopHeartbeatSound: () -> Unit = {},
     onPlayRecordTypingSound: () -> Unit = {},
-    onStopRecordTypingSound: () -> Unit = {}
+    onStopRecordTypingSound: () -> Unit = {},
+    onFadeOutChatBackgroundMusic: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val chatGameViewModel: ChatGameViewModel = viewModel(
@@ -143,6 +144,7 @@ fun DoctorChatScreen(
     val currentOnStopHeartbeatSound by rememberUpdatedState(onStopHeartbeatSound)
     val currentOnPlayRecordTypingSound by rememberUpdatedState(onPlayRecordTypingSound)
     val currentOnStopRecordTypingSound by rememberUpdatedState(onStopRecordTypingSound)
+    val currentOnFadeOutChatBackgroundMusic by rememberUpdatedState(onFadeOutChatBackgroundMusic)
     val runToPatientItemCount = if (chatGameUiState.hasErrorFor(DoctorRunToPatientRequest)) {
         1
     } else {
@@ -248,7 +250,7 @@ fun DoctorChatScreen(
     )
 
     LaunchedEffect(infoUnreadStateKey) {
-        infoUnreadStateKey?.let(onInfoUnreadStateShown)
+        onInfoUnreadStateShown(infoUnreadStateKey)
     }
 
     LaunchedEffect(revealedInitialItemCount, isRevealPaused, hasNotifiedIntroSceneFinished) {
@@ -257,7 +259,6 @@ fun DoctorChatScreen(
             !isRevealPaused &&
             revealedInitialItemCount >= DOCTOR_INTRO_SOUND_STOP_ITEM_COUNT
         ) {
-            delay(DOCTOR_CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
             hasNotifiedIntroSceneFinished = true
             currentOnIntroSceneFinished()
         }
@@ -415,6 +416,7 @@ fun DoctorChatScreen(
         ChatRecordDetailTransition(
             content = activeRecordDetailContent,
             onRecordTypingFinished = {
+                currentOnFadeOutChatBackgroundMusic()
                 when (selectedTriageBranch) {
                     DoctorTriageBranch.FocusPatient -> {
                         isFocusPatientRecordTypingFinished = true

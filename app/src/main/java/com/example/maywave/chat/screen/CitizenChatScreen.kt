@@ -62,7 +62,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 private const val CHAT_ELEMENT_REVEAL_DURATION_MILLIS = 2_000
 private const val SERVER_RESULT_NEXT_REVEAL_DELAY_MILLIS = 4_000
 private const val INITIAL_CHAT_ELEMENT_COUNT = 8
-private const val INTRO_SOUND_STOP_ITEM_COUNT = INITIAL_CHAT_ELEMENT_COUNT
+private const val INTRO_SOUND_STOP_ITEM_COUNT = 3
 private const val CLOSE_BRANCH_ELEMENT_COUNT = 10
 private const val CLOSE_BRANCH_RADIO_START_ITEM_COUNT = 3
 private const val CLOSE_BRANCH_RADIO_STOP_ITEM_COUNT = 10
@@ -91,7 +91,7 @@ fun CitizenChatScreen(
     onInfoClick: () -> Unit = {},
     showInfoUnreadDot: Boolean = true,
     onInfoRead: () -> Unit = {},
-    onInfoUnreadStateShown: (String) -> Unit = {},
+    onInfoUnreadStateShown: (String?) -> Unit = {},
     isChatPaused: Boolean = false,
     onIntroSceneFinished: () -> Unit = {},
     onChoiceClickSound: () -> Unit = {},
@@ -99,11 +99,14 @@ fun CitizenChatScreen(
     onStopBranchRadio: () -> Unit = {},
     onPlayHelpFallenSceneSound: () -> Unit = {},
     onStopHelpFallenSceneSound: () -> Unit = {},
+    onPlayDistanceRecordSound: () -> Unit = {},
+    onStopDistanceRecordSound: () -> Unit = {},
     onPlayAirborneCrackdownSceneSound: () -> Unit = {},
     onFadeOutAirborneCrackdownSceneSound: () -> Unit = {},
     onStopAirborneCrackdownSceneSound: () -> Unit = {},
     onPlayRecordTypingSound: () -> Unit = {},
-    onStopRecordTypingSound: () -> Unit = {}
+    onStopRecordTypingSound: () -> Unit = {},
+    onFadeOutChatBackgroundMusic: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val chatGameViewModel: ChatGameViewModel = viewModel(
@@ -128,11 +131,14 @@ fun CitizenChatScreen(
     val currentOnStopBranchRadio by rememberUpdatedState(onStopBranchRadio)
     val currentOnPlayHelpFallenSceneSound by rememberUpdatedState(onPlayHelpFallenSceneSound)
     val currentOnStopHelpFallenSceneSound by rememberUpdatedState(onStopHelpFallenSceneSound)
+    val currentOnPlayDistanceRecordSound by rememberUpdatedState(onPlayDistanceRecordSound)
+    val currentOnStopDistanceRecordSound by rememberUpdatedState(onStopDistanceRecordSound)
     val currentOnPlayAirborneCrackdownSceneSound by rememberUpdatedState(onPlayAirborneCrackdownSceneSound)
     val currentOnFadeOutAirborneCrackdownSceneSound by rememberUpdatedState(onFadeOutAirborneCrackdownSceneSound)
     val currentOnStopAirborneCrackdownSceneSound by rememberUpdatedState(onStopAirborneCrackdownSceneSound)
     val currentOnPlayRecordTypingSound by rememberUpdatedState(onPlayRecordTypingSound)
     val currentOnStopRecordTypingSound by rememberUpdatedState(onStopRecordTypingSound)
+    val currentOnFadeOutChatBackgroundMusic by rememberUpdatedState(onFadeOutChatBackgroundMusic)
     val closeItemCount = if (chatGameUiState.hasErrorFor(CitizenCloseRequest)) {
         1
     } else {
@@ -227,7 +233,7 @@ fun CitizenChatScreen(
     )
 
     LaunchedEffect(infoUnreadStateKey) {
-        infoUnreadStateKey?.let(onInfoUnreadStateShown)
+        onInfoUnreadStateShown(infoUnreadStateKey)
     }
 
     LaunchedEffect(revealedInitialItemCount, isRevealPaused, hasNotifiedIntroSceneFinished) {
@@ -236,7 +242,6 @@ fun CitizenChatScreen(
             !isRevealPaused &&
             revealedInitialItemCount >= INTRO_SOUND_STOP_ITEM_COUNT
         ) {
-            delay(CHAT_ELEMENT_REVEAL_DURATION_MILLIS.toLong())
             hasNotifiedIntroSceneFinished = true
             currentOnIntroSceneFinished()
         }
@@ -309,6 +314,7 @@ fun CitizenChatScreen(
         onDispose {
             currentOnStopBranchRadio()
             currentOnStopHelpFallenSceneSound()
+            currentOnStopDistanceRecordSound()
             currentOnStopAirborneCrackdownSceneSound()
             currentOnStopRecordTypingSound()
         }
@@ -365,6 +371,7 @@ fun CitizenChatScreen(
         ChatRecordDetailTransition(
             content = activeRecordDetailContent,
             onRecordTypingFinished = {
+                currentOnFadeOutChatBackgroundMusic()
                 when {
                     selectedCloseBranch == CitizenCloseBranch.HelpFallen -> {
                         isHelpFallenRecordTransitionFinished = true
@@ -375,12 +382,18 @@ fun CitizenChatScreen(
                     }
 
                     selectedBranch == CitizenChatBranch.Distance -> {
+                        currentOnStopDistanceRecordSound()
                         isDistanceRecordTypingFinished = true
                     }
                 }
             },
             modifier = Modifier.fillMaxSize(),
             isPaused = isRevealPaused,
+            onRecordScreenShown = {
+                if (selectedBranch == CitizenChatBranch.Distance) {
+                    currentOnPlayDistanceRecordSound()
+                }
+            },
             onRecordTypingAnimationStarted = currentOnPlayRecordTypingSound,
             onRecordTypingAnimationFinished = currentOnStopRecordTypingSound
         ) {

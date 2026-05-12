@@ -12,19 +12,21 @@ class MayWaveSoundPlayer(
     context: Context
 ) {
     private companion object {
+        const val DEFAULT_SOUND_VOLUME = 1f
+        const val BASS_IMPACT_VOLUME = 5f
+        const val INTRO_BACKGROUND_MUSIC_VOLUME = 0.7f
+        const val CHAT_BACKGROUND_MUSIC_VOLUME = 0.6f
+        const val SOUND_FADE_OUT_DURATION_MILLIS = 1_800L
+        const val START_SOUND_FADE_OUT_DURATION_MILLIS = 2_800L
+        const val SOUND_FADE_OUT_STEP_MILLIS = 100L
         const val CITIZEN_BRANCH_RADIO_START_POSITION_MILLIS = 41_000
         const val CITIZEN_BRANCH_RADIO_STOP_POSITION_MILLIS = 52_000
         const val CITIZEN_BRANCH_RADIO_CHECK_INTERVAL_MILLIS = 24L
         const val CITIZEN_DISTANCE_RECORD_START_POSITION_MILLIS = 24_000
-        const val AIRBORNE_CRACKDOWN_SCENE_VOLUME = 1f
-        const val AIRBORNE_CRACKDOWN_SCENE_FADE_OUT_DURATION_MILLIS = 2_000L
-        const val AIRBORNE_CRACKDOWN_SCENE_FADE_OUT_STEP_MILLIS = 100L
+        const val CITIZEN_HELP_FALLEN_SCENE_VOLUME = 0.8f
+        const val AIRBORNE_CRACKDOWN_SCENE_VOLUME = 0.8f
         const val DOCTOR_CROWD_CRYING_VOLUME = 0.22f
-        const val DOCTOR_CROWD_CRYING_FADE_OUT_DURATION_MILLIS = 1_800L
-        const val DOCTOR_CROWD_CRYING_FADE_OUT_STEP_MILLIS = 100L
         const val DOCTOR_HEARTBEAT_VOLUME = 0.28f
-        const val DOCTOR_HEARTBEAT_FADE_OUT_DURATION_MILLIS = 2_000L
-        const val DOCTOR_HEARTBEAT_FADE_OUT_STEP_MILLIS = 100L
         const val RECORD_TYPING_LOOP_START_POSITION_MILLIS = 1_000
         const val RECORD_TYPING_LOOP_END_POSITION_MILLIS = 3_000
         const val RECORD_TYPING_LOOP_CHECK_INTERVAL_MILLIS = 24L
@@ -32,6 +34,7 @@ class MayWaveSoundPlayer(
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var bassImpactPlayer: MediaPlayer? = null
     private var startSoundPlayer: MediaPlayer? = null
     private var roleVoicePlayer: MediaPlayer? = null
     private var choiceClickPlayer: MediaPlayer? = null
@@ -43,11 +46,29 @@ class MayWaveSoundPlayer(
     private var citizenDistanceRecordPlayer: MediaPlayer? = null
     private var airborneCrackdownScenePlayer: MediaPlayer? = null
     private var recordTypingPlayer: MediaPlayer? = null
+    private var introBackgroundMusicPlayer: MediaPlayer? = null
+    private var chatBackgroundMusicPlayer: MediaPlayer? = null
     private var doctorCrowdCryingFadeOutRunnable: Runnable? = null
     private var doctorHeartbeatFadeOutRunnable: Runnable? = null
     private var airborneCrackdownSceneFadeOutRunnable: Runnable? = null
     private var citizenBranchRadioStopRunnable: Runnable? = null
     private var recordTypingLoopRunnable: Runnable? = null
+
+    fun playBassImpactSound() {
+        bassImpactPlayer = bassImpactPlayer.releaseSafely()
+        bassImpactPlayer = createAndStartPlayer(
+            rawResId = R.raw.bass_impact_sound_effect,
+            volume = BASS_IMPACT_VOLUME
+        ) { completedPlayer ->
+            if (bassImpactPlayer === completedPlayer) {
+                bassImpactPlayer = null
+            }
+        }
+    }
+
+    fun stopBassImpactSound() {
+        bassImpactPlayer = bassImpactPlayer.fadeOutAndRelease(BASS_IMPACT_VOLUME)
+    }
 
     fun playStartSound() {
         startSoundPlayer = startSoundPlayer.releaseSafely()
@@ -59,11 +80,13 @@ class MayWaveSoundPlayer(
     }
 
     fun stopStartSound() {
-        startSoundPlayer = startSoundPlayer.releaseSafely()
+        startSoundPlayer = startSoundPlayer.fadeOutAndRelease(
+            durationMillis = START_SOUND_FADE_OUT_DURATION_MILLIS
+        )
     }
 
     fun playRoleVoice(roleVoiceSound: RoleVoiceSound) {
-        roleVoicePlayer = roleVoicePlayer.releaseSafely()
+        roleVoicePlayer = roleVoicePlayer.fadeOutAndRelease()
         roleVoicePlayer = createAndStartPlayer(roleVoiceSound.rawResId) { completedPlayer ->
             if (roleVoicePlayer === completedPlayer) {
                 roleVoicePlayer = null
@@ -72,7 +95,7 @@ class MayWaveSoundPlayer(
     }
 
     fun stopRoleVoice() {
-        roleVoicePlayer = roleVoicePlayer.releaseSafely()
+        roleVoicePlayer = roleVoicePlayer.fadeOutAndRelease()
     }
 
     fun playChoiceClick() {
@@ -94,7 +117,7 @@ class MayWaveSoundPlayer(
     }
 
     fun stopDoctorRunToPatientSound() {
-        doctorRunToPatientPlayer = doctorRunToPatientPlayer.releaseSafely()
+        doctorRunToPatientPlayer = doctorRunToPatientPlayer.fadeOutAndRelease()
     }
 
     fun playDoctorCrowdCryingSound() {
@@ -121,14 +144,17 @@ class MayWaveSoundPlayer(
                 if (doctorCrowdCryingPlayer !== player) return
 
                 val elapsedMillis = SystemClock.uptimeMillis() - startedAt
-                val remainingRatio = 1f - (elapsedMillis.toFloat() / DOCTOR_CROWD_CRYING_FADE_OUT_DURATION_MILLIS)
+                val remainingRatio = 1f - (elapsedMillis.toFloat() / SOUND_FADE_OUT_DURATION_MILLIS)
                 val volume = DOCTOR_CROWD_CRYING_VOLUME * remainingRatio.coerceIn(0f, 1f)
                 player.setVolume(volume, volume)
 
-                if (elapsedMillis >= DOCTOR_CROWD_CRYING_FADE_OUT_DURATION_MILLIS) {
-                    stopDoctorCrowdCryingSound()
+                if (elapsedMillis >= SOUND_FADE_OUT_DURATION_MILLIS) {
+                    stopDoctorCrowdCryingFadeOut()
+                    if (doctorCrowdCryingPlayer === player) {
+                        doctorCrowdCryingPlayer = player.releaseSafely()
+                    }
                 } else {
-                    mainHandler.postDelayed(this, DOCTOR_CROWD_CRYING_FADE_OUT_STEP_MILLIS)
+                    mainHandler.postDelayed(this, SOUND_FADE_OUT_STEP_MILLIS)
                 }
             }
         }
@@ -138,7 +164,7 @@ class MayWaveSoundPlayer(
 
     fun stopDoctorCrowdCryingSound() {
         stopDoctorCrowdCryingFadeOut()
-        doctorCrowdCryingPlayer = doctorCrowdCryingPlayer.releaseSafely()
+        doctorCrowdCryingPlayer = doctorCrowdCryingPlayer.fadeOutAndRelease(DOCTOR_CROWD_CRYING_VOLUME)
     }
 
     fun playDoctorHeartbeatSound() {
@@ -165,14 +191,17 @@ class MayWaveSoundPlayer(
                 if (doctorHeartbeatPlayer !== player) return
 
                 val elapsedMillis = SystemClock.uptimeMillis() - startedAt
-                val remainingRatio = 1f - (elapsedMillis.toFloat() / DOCTOR_HEARTBEAT_FADE_OUT_DURATION_MILLIS)
+                val remainingRatio = 1f - (elapsedMillis.toFloat() / SOUND_FADE_OUT_DURATION_MILLIS)
                 val volume = DOCTOR_HEARTBEAT_VOLUME * remainingRatio.coerceIn(0f, 1f)
                 player.setVolume(volume, volume)
 
-                if (elapsedMillis >= DOCTOR_HEARTBEAT_FADE_OUT_DURATION_MILLIS) {
-                    stopDoctorHeartbeatSound()
+                if (elapsedMillis >= SOUND_FADE_OUT_DURATION_MILLIS) {
+                    stopDoctorHeartbeatFadeOut()
+                    if (doctorHeartbeatPlayer === player) {
+                        doctorHeartbeatPlayer = player.releaseSafely()
+                    }
                 } else {
-                    mainHandler.postDelayed(this, DOCTOR_HEARTBEAT_FADE_OUT_STEP_MILLIS)
+                    mainHandler.postDelayed(this, SOUND_FADE_OUT_STEP_MILLIS)
                 }
             }
         }
@@ -182,7 +211,7 @@ class MayWaveSoundPlayer(
 
     fun stopDoctorHeartbeatSound() {
         stopDoctorHeartbeatFadeOut()
-        doctorHeartbeatPlayer = doctorHeartbeatPlayer.releaseSafely()
+        doctorHeartbeatPlayer = doctorHeartbeatPlayer.fadeOutAndRelease(DOCTOR_HEARTBEAT_VOLUME)
     }
 
     fun playCitizenBranchRadio() {
@@ -200,7 +229,7 @@ class MayWaveSoundPlayer(
 
     fun stopCitizenBranchRadio() {
         stopCitizenBranchRadioStopCheck()
-        citizenBranchRadioPlayer = citizenBranchRadioPlayer.releaseSafely()
+        citizenBranchRadioPlayer = citizenBranchRadioPlayer.fadeOutAndRelease()
     }
 
     fun playCitizenHelpFallenSceneSound() {
@@ -209,11 +238,15 @@ class MayWaveSoundPlayer(
             if (citizenHelpFallenScenePlayer === completedPlayer) {
                 citizenHelpFallenScenePlayer = null
             }
+        }?.apply {
+            setVolume(CITIZEN_HELP_FALLEN_SCENE_VOLUME, CITIZEN_HELP_FALLEN_SCENE_VOLUME)
         }
     }
 
     fun stopCitizenHelpFallenSceneSound() {
-        citizenHelpFallenScenePlayer = citizenHelpFallenScenePlayer.releaseSafely()
+        citizenHelpFallenScenePlayer = citizenHelpFallenScenePlayer.fadeOutAndRelease(
+            CITIZEN_HELP_FALLEN_SCENE_VOLUME
+        )
     }
 
     fun playCitizenDistanceRecord() {
@@ -229,7 +262,7 @@ class MayWaveSoundPlayer(
     }
 
     fun stopCitizenDistanceRecord() {
-        citizenDistanceRecordPlayer = citizenDistanceRecordPlayer.releaseSafely()
+        citizenDistanceRecordPlayer = citizenDistanceRecordPlayer.fadeOutAndRelease()
     }
 
     fun playAirborneCrackdownSceneSound() {
@@ -253,14 +286,17 @@ class MayWaveSoundPlayer(
                 if (airborneCrackdownScenePlayer !== player) return
 
                 val elapsedMillis = SystemClock.uptimeMillis() - startedAt
-                val remainingRatio = 1f - (elapsedMillis.toFloat() / AIRBORNE_CRACKDOWN_SCENE_FADE_OUT_DURATION_MILLIS)
+                val remainingRatio = 1f - (elapsedMillis.toFloat() / SOUND_FADE_OUT_DURATION_MILLIS)
                 val volume = AIRBORNE_CRACKDOWN_SCENE_VOLUME * remainingRatio.coerceIn(0f, 1f)
                 player.setVolume(volume, volume)
 
-                if (elapsedMillis >= AIRBORNE_CRACKDOWN_SCENE_FADE_OUT_DURATION_MILLIS) {
-                    stopAirborneCrackdownSceneSound()
+                if (elapsedMillis >= SOUND_FADE_OUT_DURATION_MILLIS) {
+                    stopAirborneCrackdownSceneFadeOut()
+                    if (airborneCrackdownScenePlayer === player) {
+                        airborneCrackdownScenePlayer = player.releaseSafely()
+                    }
                 } else {
-                    mainHandler.postDelayed(this, AIRBORNE_CRACKDOWN_SCENE_FADE_OUT_STEP_MILLIS)
+                    mainHandler.postDelayed(this, SOUND_FADE_OUT_STEP_MILLIS)
                 }
             }
         }
@@ -270,7 +306,9 @@ class MayWaveSoundPlayer(
 
     fun stopAirborneCrackdownSceneSound() {
         stopAirborneCrackdownSceneFadeOut()
-        airborneCrackdownScenePlayer = airborneCrackdownScenePlayer.releaseSafely()
+        airborneCrackdownScenePlayer = airborneCrackdownScenePlayer.fadeOutAndRelease(
+            AIRBORNE_CRACKDOWN_SCENE_VOLUME
+        )
     }
 
     fun playRecordTypingSound() {
@@ -288,10 +326,49 @@ class MayWaveSoundPlayer(
 
     fun stopRecordTypingSound() {
         stopRecordTypingLoopCheck()
-        recordTypingPlayer = recordTypingPlayer.releaseSafely()
+        recordTypingPlayer = recordTypingPlayer.fadeOutAndRelease()
+    }
+
+    fun playIntroBackgroundMusic() {
+        chatBackgroundMusicPlayer = chatBackgroundMusicPlayer.fadeOutAndRelease(CHAT_BACKGROUND_MUSIC_VOLUME)
+        if (introBackgroundMusicPlayer != null) return
+
+        introBackgroundMusicPlayer = createAndStartPlayer(
+            rawResId = R.raw.bgm,
+            isLooping = true,
+            volume = INTRO_BACKGROUND_MUSIC_VOLUME
+        ) { completedPlayer ->
+            if (introBackgroundMusicPlayer === completedPlayer) {
+                introBackgroundMusicPlayer = null
+            }
+        }
+    }
+
+    fun fadeOutIntroBackgroundMusic() {
+        introBackgroundMusicPlayer = introBackgroundMusicPlayer.fadeOutAndRelease(INTRO_BACKGROUND_MUSIC_VOLUME)
+    }
+
+    fun playChatBackgroundMusic() {
+        introBackgroundMusicPlayer = introBackgroundMusicPlayer.fadeOutAndRelease(INTRO_BACKGROUND_MUSIC_VOLUME)
+        if (chatBackgroundMusicPlayer != null) return
+
+        chatBackgroundMusicPlayer = createAndStartPlayer(
+            rawResId = R.raw.bgm2,
+            isLooping = true,
+            volume = CHAT_BACKGROUND_MUSIC_VOLUME
+        ) { completedPlayer ->
+            if (chatBackgroundMusicPlayer === completedPlayer) {
+                chatBackgroundMusicPlayer = null
+            }
+        }
+    }
+
+    fun fadeOutChatBackgroundMusic() {
+        chatBackgroundMusicPlayer = chatBackgroundMusicPlayer.fadeOutAndRelease(CHAT_BACKGROUND_MUSIC_VOLUME)
     }
 
     fun release() {
+        bassImpactPlayer = bassImpactPlayer.releaseSafely()
         startSoundPlayer = startSoundPlayer.releaseSafely()
         roleVoicePlayer = roleVoicePlayer.releaseSafely()
         choiceClickPlayer = choiceClickPlayer.releaseSafely()
@@ -308,6 +385,8 @@ class MayWaveSoundPlayer(
         airborneCrackdownScenePlayer = airborneCrackdownScenePlayer.releaseSafely()
         stopRecordTypingLoopCheck()
         recordTypingPlayer = recordTypingPlayer.releaseSafely()
+        introBackgroundMusicPlayer = introBackgroundMusicPlayer.releaseSafely()
+        chatBackgroundMusicPlayer = chatBackgroundMusicPlayer.releaseSafely()
     }
 
     private fun startCitizenBranchRadioStopCheck() {
@@ -370,11 +449,13 @@ class MayWaveSoundPlayer(
         @RawRes rawResId: Int,
         startPositionMillis: Int = 0,
         isLooping: Boolean = false,
+        volume: Float = DEFAULT_SOUND_VOLUME,
         onCompletion: (MediaPlayer) -> Unit
     ): MediaPlayer? {
         return runCatching {
             MediaPlayer.create(appContext, rawResId)?.apply {
                 this.isLooping = isLooping
+                setVolume(volume, volume)
                 setOnCompletionListener { completedPlayer ->
                     completedPlayer.setOnCompletionListener(null)
                     completedPlayer.release()
@@ -391,6 +472,31 @@ class MayWaveSoundPlayer(
     private fun MediaPlayer?.releaseSafely(): MediaPlayer? {
         this?.setOnCompletionListener(null)
         this?.release()
+        return null
+    }
+
+    private fun MediaPlayer?.fadeOutAndRelease(
+        startVolume: Float = DEFAULT_SOUND_VOLUME,
+        durationMillis: Long = SOUND_FADE_OUT_DURATION_MILLIS
+    ): MediaPlayer? {
+        val player = this ?: return null
+        player.setOnCompletionListener(null)
+        val startedAt = SystemClock.uptimeMillis()
+        val fadeOutRunnable = object : Runnable {
+            override fun run() {
+                val elapsedMillis = SystemClock.uptimeMillis() - startedAt
+                val remainingRatio = 1f - (elapsedMillis.toFloat() / durationMillis)
+                val volume = startVolume * remainingRatio.coerceIn(0f, 1f)
+                runCatching { player.setVolume(volume, volume) }
+
+                if (elapsedMillis >= durationMillis) {
+                    player.releaseSafely()
+                } else {
+                    mainHandler.postDelayed(this, SOUND_FADE_OUT_STEP_MILLIS)
+                }
+            }
+        }
+        mainHandler.post(fadeOutRunnable)
         return null
     }
 }

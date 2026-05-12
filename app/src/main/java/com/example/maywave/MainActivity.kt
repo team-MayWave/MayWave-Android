@@ -33,6 +33,7 @@ import com.example.maywave.chat.screen.CitizenChatScreen
 import com.example.maywave.chat.screen.DoctorChatScreen
 import com.example.maywave.chat.screen.ReporterChatScreen
 import com.example.maywave.intro.screen.Intro
+import com.example.maywave.intro.screen.SoundGuideScreen
 import com.example.maywave.ui.theme.MayWaveTheme
 import kotlinx.coroutines.delay
 
@@ -55,16 +56,18 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 var currentRoute by rememberSaveable(stateSaver = ChatRouteSaver) {
-                    mutableStateOf(ChatRoute.Intro)
+                    mutableStateOf(ChatRoute.SoundGuide)
                 }
+                var hasPlayedBassImpactSound by rememberSaveable { mutableStateOf(false) }
                 var showInfoUnreadDot by rememberSaveable { mutableStateOf(false) }
-                var latestInfoUnreadStateKey by rememberSaveable { mutableStateOf<String?>(null) }
+                var currentInfoStateKey by rememberSaveable { mutableStateOf<String?>(null) }
                 var activeInfoStateKey by rememberSaveable { mutableStateOf<String?>(null) }
                 var pendingChatRoute by remember { mutableStateOf<ChatRoute?>(null) }
                 var transitionPhase by remember { mutableStateOf(RouteTransitionPhase.Idle) }
                 val activeInfoContent = chatInfoOverlayContentFor(activeInfoStateKey)
                 val isChatPaused = activeInfoContent != null
                 val routeFadeDurationMillis = when (transitionPhase) {
+                    RouteTransitionPhase.FadingOutSoundGuide,
                     RouteTransitionPhase.FadingOutChat,
                     RouteTransitionPhase.FadingInIntro -> BACK_TO_INTRO_FADE_DURATION_MILLIS
 
@@ -74,6 +77,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val screenAlpha by animateFloatAsState(
                     targetValue = when (transitionPhase) {
+                        RouteTransitionPhase.FadingOutSoundGuide,
                         RouteTransitionPhase.FadingOutIntro,
                         RouteTransitionPhase.FadingOutChat -> 0f
 
@@ -100,8 +104,36 @@ class MainActivity : ComponentActivity() {
                     isLaunchScreenFinished = true
                 }
 
+                LaunchedEffect(isLaunchScreenFinished, currentRoute, hasPlayedBassImpactSound) {
+                    if (
+                        isLaunchScreenFinished &&
+                        currentRoute == ChatRoute.SoundGuide &&
+                        !hasPlayedBassImpactSound
+                    ) {
+                        hasPlayedBassImpactSound = true
+                        soundPlayer.playBassImpactSound()
+                    }
+                }
+
+                LaunchedEffect(currentRoute) {
+                    when {
+                        currentRoute == ChatRoute.Intro -> soundPlayer.playIntroBackgroundMusic()
+                        currentRoute.isChatRoute() -> soundPlayer.playChatBackgroundMusic()
+                        else -> {
+                            soundPlayer.fadeOutIntroBackgroundMusic()
+                            soundPlayer.fadeOutChatBackgroundMusic()
+                        }
+                    }
+                }
+
                 LaunchedEffect(transitionPhase, pendingChatRoute) {
                     when (transitionPhase) {
+                        RouteTransitionPhase.FadingOutSoundGuide -> {
+                            delay(BACK_TO_INTRO_FADE_DURATION_MILLIS)
+                            currentRoute = ChatRoute.Intro
+                            transitionPhase = RouteTransitionPhase.FadingInIntro
+                        }
+
                         RouteTransitionPhase.FadingOutIntro -> {
                             val chatRoute = pendingChatRoute ?: return@LaunchedEffect
                             delay(INTRO_TO_CHAT_FADE_DURATION_MILLIS)
@@ -141,6 +173,7 @@ class MainActivity : ComponentActivity() {
                         soundPlayer.stopCitizenDistanceRecord()
                         soundPlayer.stopAirborneCrackdownSceneSound()
                         soundPlayer.stopRecordTypingSound()
+                        soundPlayer.fadeOutChatBackgroundMusic()
                         pendingChatRoute = null
                         transitionPhase = RouteTransitionPhase.FadingOutChat
                     }
@@ -150,19 +183,25 @@ class MainActivity : ComponentActivity() {
                         soundPlayer.playChoiceClick()
                         soundPlayer.stopRoleVoice()
                         soundPlayer.playStartSound()
+                        soundPlayer.fadeOutIntroBackgroundMusic()
                         pendingChatRoute = route
                         transitionPhase = RouteTransitionPhase.FadingOutIntro
                     }
                 }
-                val showInfoUnreadDotForState = { stateKey: String ->
-                    if (latestInfoUnreadStateKey != stateKey) {
-                        latestInfoUnreadStateKey = stateKey
-                        showInfoUnreadDot = true
+                val startIntroWithFade = {
+                    if (transitionPhase == RouteTransitionPhase.Idle && currentRoute == ChatRoute.SoundGuide) {
+                        transitionPhase = RouteTransitionPhase.FadingOutSoundGuide
+                    }
+                }
+                val showInfoUnreadDotForState = { stateKey: String? ->
+                    if (currentInfoStateKey != stateKey) {
+                        currentInfoStateKey = stateKey
+                        showInfoUnreadDot = stateKey != null
                     }
                 }
                 val showChatInfoOverlay = {
-                    val stateKey = latestInfoUnreadStateKey
-                    if (showInfoUnreadDot && chatInfoOverlayContentFor(stateKey) != null) {
+                    val stateKey = currentInfoStateKey
+                    if (chatInfoOverlayContentFor(stateKey) != null) {
                         activeInfoStateKey = stateKey
                         showInfoUnreadDot = false
                     }
@@ -180,6 +219,13 @@ class MainActivity : ComponentActivity() {
                             .blur(if (activeInfoContent != null) CHAT_INFO_BACKGROUND_BLUR else 0.dp)
                     ) {
                         when (currentRoute) {
+                            ChatRoute.SoundGuide -> {
+                                SoundGuideScreen(
+                                    onTouchStart = startIntroWithFade,
+                                    modifier = Modifier.systemBarsPadding()
+                                )
+                            }
+
                             ChatRoute.Citizen -> {
                                 CitizenChatScreen(
                                     onBackClick = navigateBackToIntro,
@@ -194,11 +240,14 @@ class MainActivity : ComponentActivity() {
                                     onStopBranchRadio = soundPlayer::stopCitizenBranchRadio,
                                     onPlayHelpFallenSceneSound = soundPlayer::playCitizenHelpFallenSceneSound,
                                     onStopHelpFallenSceneSound = soundPlayer::stopCitizenHelpFallenSceneSound,
+                                    onPlayDistanceRecordSound = soundPlayer::playCitizenDistanceRecord,
+                                    onStopDistanceRecordSound = soundPlayer::stopCitizenDistanceRecord,
                                     onPlayAirborneCrackdownSceneSound = soundPlayer::playAirborneCrackdownSceneSound,
                                     onFadeOutAirborneCrackdownSceneSound = soundPlayer::fadeOutAirborneCrackdownSceneSound,
                                     onStopAirborneCrackdownSceneSound = soundPlayer::stopAirborneCrackdownSceneSound,
                                     onPlayRecordTypingSound = soundPlayer::playRecordTypingSound,
                                     onStopRecordTypingSound = soundPlayer::stopRecordTypingSound,
+                                    onFadeOutChatBackgroundMusic = soundPlayer::fadeOutChatBackgroundMusic,
                                     modifier = Modifier.systemBarsPadding()
                                 )
                             }
@@ -223,6 +272,7 @@ class MainActivity : ComponentActivity() {
                                     onStopHeartbeatSound = soundPlayer::stopDoctorHeartbeatSound,
                                     onPlayRecordTypingSound = soundPlayer::playRecordTypingSound,
                                     onStopRecordTypingSound = soundPlayer::stopRecordTypingSound,
+                                    onFadeOutChatBackgroundMusic = soundPlayer::fadeOutChatBackgroundMusic,
                                     modifier = Modifier.systemBarsPadding()
                                 )
                             }
@@ -242,6 +292,7 @@ class MainActivity : ComponentActivity() {
                                     onStopAirborneCrackdownSceneSound = soundPlayer::stopAirborneCrackdownSceneSound,
                                     onPlayRecordTypingSound = soundPlayer::playRecordTypingSound,
                                     onStopRecordTypingSound = soundPlayer::stopRecordTypingSound,
+                                    onFadeOutChatBackgroundMusic = soundPlayer::fadeOutChatBackgroundMusic,
                                     modifier = Modifier.systemBarsPadding()
                                 )
                             }
@@ -284,8 +335,13 @@ class MainActivity : ComponentActivity() {
 
 private enum class RouteTransitionPhase {
     Idle,
+    FadingOutSoundGuide,
     FadingOutIntro,
     FadingInChat,
     FadingOutChat,
     FadingInIntro
+}
+
+private fun ChatRoute.isChatRoute(): Boolean {
+    return this == ChatRoute.Citizen || this == ChatRoute.Doctor || this == ChatRoute.Reporter
 }
